@@ -45,7 +45,7 @@ export function UserNav() {
           <DropdownMenuSeparator />
           <DropdownMenuItem
             className="cursor-pointer"
-            onClick={() => signOut({ callbackUrl: "/login" })}
+            onClick={() => signOut()}
           >
             <LogOut className="mr-2 h-4 w-4" />
             <span>Sair</span>
