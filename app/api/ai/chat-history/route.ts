@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authOptions } from "@/lib/auth-options";
 import { adminDb, assertIsServer } from "@/lib/firebase-admin-server";
 import admin from "firebase-admin";
 

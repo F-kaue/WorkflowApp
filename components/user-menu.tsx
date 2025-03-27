@@ -44,7 +44,7 @@ export function UserMenu() {
           <span>Perfil</span>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => signOut()}>
+        <DropdownMenuItem onClick={() => signOut({ callbackUrl: process.env.NEXTAUTH_URL || "http://localhost:3002" })}>
           <LogOut className="mr-2 h-4 w-4" />
           <span>Sair</span>
         </DropdownMenuItem>

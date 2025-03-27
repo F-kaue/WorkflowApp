@@ -6,7 +6,7 @@
 
 import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
+import { authOptions } from "@/lib/auth-options"
 import { adminDb, adminAuth, assertIsServer } from "@/lib/firebase-admin-server"
 
 // Garantir que este código só execute no servidor
