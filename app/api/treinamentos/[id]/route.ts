@@ -3,10 +3,10 @@ import { excluirTreinamento } from "@/lib/firestore"
 
 export async function DELETE(
   request: Request,
-  context: { params: { id: string } }
+  { params }: { params: { id: string } }
 ) {
   try {
-    await excluirTreinamento(context.params.id)
+    await excluirTreinamento(params.id)
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Erro ao excluir treinamento:", error)
