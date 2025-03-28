@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 
 export async function DELETE(request: Request) {
   try {
-    // Extrai o ID da URL
-    const { pathname } = new URL(request.url);
-    const ticketId = pathname.split("/").pop(); // Último segmento da URL
+    // Extrai o ID diretamente da URL
+    const url = new URL(request.url);
+    const ticketId = url.pathname.split("/").pop(); // Pega o último segmento da URL
 
     if (!ticketId) {
       return NextResponse.json({ error: "ID do ticket não fornecido" }, { status: 400 });
