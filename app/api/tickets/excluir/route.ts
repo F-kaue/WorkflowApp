@@ -4,83 +4,50 @@ import { authOptions } from "@/lib/auth-options";
 import fs from "fs";
 import path from "path";
 
-// Caminho para o arquivo JSON
-const dataFilePath = path.join(process.cwd(), "data", "tickets.json");
-
-// Garantir que o diretório "data" exista
-function ensureDirectoryExists() {
-  const dir = path.dirname(dataFilePath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-}
-
-// Carregar tickets
-function loadTickets() {
-  ensureDirectoryExists();
-  if (!fs.existsSync(dataFilePath)) return [];
-  try {
-    const data = fs.readFileSync(dataFilePath, "utf8");
-    return JSON.parse(data);
-  } catch (error) {
-    console.error("Erro ao carregar tickets:", error);
-    return [];
-  }
-}
-
-// Salvar tickets
-function saveTickets(tickets: any[]) {
-  ensureDirectoryExists();
-  try {
-    fs.writeFileSync(dataFilePath, JSON.stringify(tickets, null, 2), "utf8");
-  } catch (error) {
-    console.error("Erro ao salvar tickets:", error);
-  }
-}
-
 // Método DELETE para excluir um ticket pelo ID
 export async function DELETE(request: Request) {
   try {
+    // Pegar o ID do ticket a partir da URL
+    const { pathname } = new URL(request.url);
+    const parts = pathname.split("/");
+    const ticketId = parts[parts.length - 1]; // Última parte da URL
+
+    if (!ticketId) {
+      return NextResponse.json({ error: "ID do ticket não fornecido" }, { status: 400 });
+    }
+
+    // Verifica se o usuário está autenticado
     const session = await getServerSession(authOptions);
     if (!session || !session.user) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
     }
 
-    // Extrair ID da URL
-    const url = new URL(request.url);
-    const ticketId = url.pathname.split("/").pop(); // Pega o último segmento da URL
+    // Caminho para o arquivo JSON que armazena os tickets
+    const dataFilePath = path.join(process.cwd(), "data", "tickets.json");
 
-    if (!ticketId) {
-      return NextResponse.json(
-        { error: "ID do ticket não fornecido" },
-        { status: 400 }
-      );
+    // Se o arquivo não existir, retorna erro
+    if (!fs.existsSync(dataFilePath)) {
+      return NextResponse.json({ error: "Nenhum ticket encontrado" }, { status: 404 });
     }
 
-    // Carregar tickets existentes
-    const tickets = loadTickets();
+    // Lê os tickets do arquivo JSON
+    const tickets = JSON.parse(fs.readFileSync(dataFilePath, "utf8"));
 
-    // Encontrar o índice do ticket
-    const ticketIndex = tickets.findIndex((ticket) => ticket.id === ticketId);
-    if (ticketIndex === -1) {
-      return NextResponse.json(
-        { error: "Ticket não encontrado" },
-        { status: 404 }
-      );
+    // Filtra e remove o ticket com o ID fornecido
+    const newTickets = tickets.filter((ticket: any) => ticket.id !== ticketId);
+
+    if (newTickets.length === tickets.length) {
+      return NextResponse.json({ error: "Ticket não encontrado" }, { status: 404 });
     }
 
-    // Remover ticket
-    tickets.splice(ticketIndex, 1);
-    saveTickets(tickets);
+    // Salva os tickets atualizados no arquivo
+    fs.writeFileSync(dataFilePath, JSON.stringify(newTickets, null, 2), "utf8");
 
-    return NextResponse.json({ success: true }, { status: 200 });
+    return NextResponse.json({ success: true, message: "Ticket excluído com sucesso" }, { status: 200 });
   } catch (error) {
     console.error("Erro ao excluir ticket:", error);
     return NextResponse.json(
-      {
-        error: "Falha ao excluir o ticket",
-        details: error instanceof Error ? error.message : String(error),
-      },
+      { error: "Erro interno do servidor", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }
