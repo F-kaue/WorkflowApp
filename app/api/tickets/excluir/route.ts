@@ -1,21 +1,31 @@
 import { NextResponse } from "next/server";
 
-export async function DELETE(request: Request) {
+export async function DELETE(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
   try {
-    // Extrai o ID diretamente da URL
-    const url = new URL(request.url);
-    const ticketId = url.pathname.split("/").pop(); // Pega o último segmento da URL
+    const { id: ticketId } = params;
 
     if (!ticketId) {
-      return NextResponse.json({ error: "ID do ticket não fornecido" }, { status: 400 });
+      return NextResponse.json(
+        { error: "ID do ticket não fornecido" },
+        { status: 400 }
+      );
     }
 
     // Simulação de remoção do ticket
     console.log(`Deletando ticket com ID: ${ticketId}`);
 
-    return NextResponse.json({ success: true, message: "Ticket excluído com sucesso" }, { status: 200 });
+    return NextResponse.json(
+      { success: true, message: "Ticket excluído com sucesso" },
+      { status: 200 }
+    );
   } catch (error) {
     console.error("Erro ao excluir ticket:", error);
-    return NextResponse.json({ error: "Erro interno do servidor" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Erro interno do servidor" },
+      { status: 500 }
+    );
   }
 }
