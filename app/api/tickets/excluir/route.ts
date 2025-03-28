@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth-options";
 import fs from "fs";
 import path from "path";
 
-// Caminho para o arquivo JSON que armazenará os tickets
+// Caminho para o arquivo JSON
 const dataFilePath = path.join(process.cwd(), "data", "tickets.json");
 
 // Garantir que o diretório "data" exista
@@ -15,15 +15,10 @@ function ensureDirectoryExists() {
   }
 }
 
-// Carregar tickets do arquivo
+// Carregar tickets
 function loadTickets() {
   ensureDirectoryExists();
-
-  if (!fs.existsSync(dataFilePath)) {
-    fs.writeFileSync(dataFilePath, JSON.stringify([]), "utf8");
-    return [];
-  }
-
+  if (!fs.existsSync(dataFilePath)) return [];
   try {
     const data = fs.readFileSync(dataFilePath, "utf8");
     return JSON.parse(data);
@@ -33,7 +28,7 @@ function loadTickets() {
   }
 }
 
-// Salvar tickets no arquivo
+// Salvar tickets
 function saveTickets(tickets: any[]) {
   ensureDirectoryExists();
   try {
@@ -43,19 +38,17 @@ function saveTickets(tickets: any[]) {
   }
 }
 
-// Rota DELETE para excluir um ticket pelo ID
-export async function DELETE(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
+// Método DELETE para excluir um ticket pelo ID
+export async function DELETE(request: Request) {
   try {
     const session = await getServerSession(authOptions);
-
     if (!session || !session.user) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
     }
 
-    const ticketId = params.id;
+    // Extrair ID da URL
+    const url = new URL(request.url);
+    const ticketId = url.pathname.split("/").pop(); // Pega o último segmento da URL
 
     if (!ticketId) {
       return NextResponse.json(
@@ -69,7 +62,6 @@ export async function DELETE(
 
     // Encontrar o índice do ticket
     const ticketIndex = tickets.findIndex((ticket) => ticket.id === ticketId);
-
     if (ticketIndex === -1) {
       return NextResponse.json(
         { error: "Ticket não encontrado" },
@@ -77,10 +69,8 @@ export async function DELETE(
       );
     }
 
-    // Remover o ticket
+    // Remover ticket
     tickets.splice(ticketIndex, 1);
-
-    // Salvar lista atualizada
     saveTickets(tickets);
 
     return NextResponse.json({ success: true }, { status: 200 });
