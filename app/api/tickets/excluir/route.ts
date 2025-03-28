@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 
 export async function DELETE(
-  request: Request,
-  { params }: { params: { id: string } }
+  request: Request
 ) {
   try {
-    const { id: ticketId } = params;
+    const { searchParams } = new URL(request.url)
+    const ticketId = searchParams.get('id')
 
     if (!ticketId) {
       return NextResponse.json(
