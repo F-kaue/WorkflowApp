@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { Home, CalendarCheck, Ticket, Settings, Bot } from "lucide-react"
+import { Home, CalendarCheck, Ticket, Bot } from "lucide-react"
 
 const routes = [
   {

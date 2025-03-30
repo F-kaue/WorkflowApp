@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/firebase"
-import { collection, getDocs, query, where, writeBatch } from "firebase/firestore"
+import { collection, getDocs, query, where, writeBatch, QueryDocumentSnapshot, DocumentData } from "firebase/firestore"
 
 export async function DELETE(request: Request) {
   try {
@@ -13,7 +13,7 @@ export async function DELETE(request: Request) {
     const querySnapshot = await getDocs(q)
 
     // Remover o email de cada treinamento
-    querySnapshot.forEach((doc) => {
+    querySnapshot.forEach((doc: QueryDocumentSnapshot<DocumentData>) => {
       const treinamento = doc.data()
       const participantesAtualizados = treinamento.participantes.filter(
         (p: string) => p !== email
@@ -32,4 +32,4 @@ export async function DELETE(request: Request) {
       { status: 500 }
     )
   }
-} 
+}

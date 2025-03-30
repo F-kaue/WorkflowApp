@@ -91,13 +91,16 @@ O ticket deve seguir o seguinte formato em Markdown, sendo extremamente detalhad
     let errorMessage = "Erro ao gerar ticket"
     let statusCode = 500
     
-    if (error.response) {
+    // Verificação de tipo para o erro
+    const errorWithResponse = error as { response?: { status: number; data?: any }; message?: string }
+    
+    if (errorWithResponse.response) {
       // Erro da API OpenAI
-      errorMessage = `Erro da API OpenAI: ${error.response.status} - ${error.response.data?.error?.message || 'Sem detalhes'}`
-      console.error("Detalhes do erro da API:", error.response.data)
-    } else if (error.message) {
+      errorMessage = `Erro da API OpenAI: ${errorWithResponse.response.status} - ${errorWithResponse.response.data?.error?.message || 'Sem detalhes'}`
+      console.error("Detalhes do erro da API:", errorWithResponse.response.data)
+    } else if (errorWithResponse.message) {
       // Erro com mensagem
-      errorMessage = `Erro: ${error.message}`
+      errorMessage = `Erro: ${errorWithResponse.message}`
     }
     
     return NextResponse.json(

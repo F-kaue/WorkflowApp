@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/use-toast"
-import { Loader2, Copy, Save, ArrowLeft, Eye, CheckCircle } from "lucide-react"
+import { Loader2, Copy, Save, ArrowLeft, Eye } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -51,11 +51,11 @@ export default function NovoTicketPage() {
         title: "Sucesso",
         description: "Ticket gerado com sucesso! Verifique a pré-visualização.",
       })
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("Erro:", error)
       toast({
         title: "Erro",
-        description: error.message || "Ocorreu um erro ao gerar o ticket. Tente novamente.",
+        description: error instanceof Error ? error.message : "Ocorreu um erro ao gerar o ticket. Tente novamente.",
         variant: "destructive",
       })
     } finally {
@@ -93,11 +93,11 @@ export default function NovoTicketPage() {
 
       router.push("/tickets")
       router.refresh()
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("Erro:", error)
       toast({
         title: "Erro",
-        description: "Ocorreu um erro ao salvar o ticket. Tente novamente.",
+        description: error instanceof Error ? error.message : "Ocorreu um erro ao salvar o ticket. Tente novamente.",
         variant: "destructive",
       })
     } finally {

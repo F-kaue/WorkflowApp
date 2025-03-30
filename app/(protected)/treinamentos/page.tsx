@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useRouter } from "next/navigation"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
@@ -59,29 +59,6 @@ export default function TreinamentosPage() {
       await fetchTreinamentos()
     } catch (error) {
       console.error("Erro ao excluir treinamento:", error)
-    }
-  }
-
-  const formatDate = (date: any) => {
-    if (!date) return ""
-    try {
-      let timestamp;
-      if (date.seconds) {
-        // Formato do Firestore Timestamp
-        timestamp = new Date(date.seconds * 1000)
-      } else if (date instanceof Date) {
-        // Já é um objeto Date
-        timestamp = date
-      } else if (typeof date === 'string') {
-        // String de data
-        timestamp = new Date(date)
-      } else {
-        return ""
-      }
-      return format(timestamp, "dd/MM/yyyy", { locale: ptBR })
-    } catch (error) {
-      console.error("Erro ao formatar data:", error)
-      return ""
     }
   }
 

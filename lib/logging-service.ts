@@ -108,7 +108,7 @@ export async function getSystemLogs(options: {
     const snapshot = await query.get()
     
     // Formatar os resultados
-    return snapshot.docs.map(doc => ({
+    return snapshot.docs.map((doc: FirebaseFirestore.QueryDocumentSnapshot) => ({
       id: doc.id,
       ...doc.data(),
       timestamp: doc.data().timestamp?.toDate?.() || doc.data().timestamp

@@ -1,6 +1,6 @@
 import { db } from "@/lib/firebase"
 import { adminDb } from "@/lib/firebase-admin"
-import { collection, getDocs, doc, getDoc, addDoc, deleteDoc, query, orderBy, Timestamp, DocumentData, QueryDocumentSnapshot } from "firebase/firestore"
+import { collection, getDocs, doc, addDoc, deleteDoc, query, orderBy, Timestamp, DocumentData, QueryDocumentSnapshot } from "firebase/firestore"
 
 export type Ticket = {
   id: string

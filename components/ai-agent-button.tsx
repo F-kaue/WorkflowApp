@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Bot } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { AiAgentPanel } from "@/components/ai-agent-panel"
 
 export function AiAgentButton() {

@@ -25,7 +25,7 @@ export default function LimparDadosPage() {
         throw new Error(errorData.error || "Falha ao limpar dados")
       }
 
-      const data = await response.json()
+      await response.json()
       setResultado({
         success: true,
         message: "Dados limpos com sucesso!",

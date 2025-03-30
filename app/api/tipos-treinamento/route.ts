@@ -70,7 +70,7 @@ export async function DELETE(request: Request) {
     }
 
     // Remover o tipo
-    const novosTipos = tipos.filter(t => t !== tipo)
+    const novosTipos = tipos.filter((t: string) => t !== tipo)
     await tiposRef.set({ lista: novosTipos })
 
     return NextResponse.json({ 

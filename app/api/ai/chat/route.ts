@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
-import { cache } from 'react';
 import { adminDb, assertIsServer } from '@/lib/firebase-admin-server';
 import { Timestamp } from 'firebase-admin/firestore';
 
@@ -120,7 +119,7 @@ export async function POST(request: Request) {
       .get();
 
     // Extrair conteúdo de treinamento
-    const trainingData = trainingSnapshot.docs.map((doc) => {
+    const trainingData = trainingSnapshot.docs.map((doc: FirebaseFirestore.QueryDocumentSnapshot<AITrainingDocument>) => {
       const data = doc.data() as AITrainingDocument;
       return data.content;
     }).join('\n\n');

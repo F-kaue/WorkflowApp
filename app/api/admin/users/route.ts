@@ -68,13 +68,13 @@ export async function GET(request: Request) {
       
       // Buscar dados adicionais dos usuários no Firestore
       const usersSnapshot = await adminDb.collection("users").get()
-      const usersData = {}
+      const usersData: Record<string, any> = {}
       
-      usersSnapshot.forEach(doc => {
+      usersSnapshot.forEach((doc: any) => {
         usersData[doc.id] = doc.data()
       })
       
-      const users = listUsersResult.users.map(userRecord => ({
+      const users = listUsersResult.users.map((userRecord: any) => ({
         id: userRecord.uid,
         name: userRecord.displayName,
         email: userRecord.email,

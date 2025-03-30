@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth-options"
 import { adminDb, assertIsServer } from "@/lib/firebase-admin-server"
+import { QueryDocumentSnapshot } from "firebase-admin/firestore"
 
 // Garantir que este código só execute no servidor
 assertIsServer()
@@ -114,7 +115,7 @@ export async function GET(request: Request) {
       .orderBy("timestamp", "desc")
       .get()
     
-    const trainingData = querySnapshot.docs.map(doc => ({
+    const trainingData = querySnapshot.docs.map((doc: QueryDocumentSnapshot) => ({
       id: doc.id,
       ...doc.data()
     }))

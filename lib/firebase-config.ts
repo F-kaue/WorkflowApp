@@ -1,7 +1,5 @@
 import * as admin from "firebase-admin"
 
-// Verificar se estamos no ambiente do servidor
-const isServer = typeof window === 'undefined'
 
 const firebaseAdminConfig = {
   credential: admin.credential.cert({

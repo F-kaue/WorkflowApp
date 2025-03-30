@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
 import { adminDb, assertIsServer } from "@/lib/firebase-admin-server";
 import admin from "firebase-admin";
+import { QueryDocumentSnapshot } from "firebase-admin/firestore";
 
 // Garantir que este código só execute no servidor
 assertIsServer();
@@ -75,7 +76,7 @@ export async function GET(request: Request) {
       .limit(limit)
       .get();
 
-    const messages = querySnapshot.docs.map((doc) => ({
+    const messages = querySnapshot.docs.map((doc: QueryDocumentSnapshot) => ({
       id: doc.id,
       ...(doc.data() as ChatMessage),
     }));

@@ -12,8 +12,8 @@ export async function POST(request: Request) {
       participantes
     } = await request.json();
 
-    // Prompt base para gerar o projeto
-    const prompt = `
+    // Prompt base para gerar o projeto (será usado quando integrarmos com a OpenAI)
+    /* const promptParaUsoFuturo = `
     Com base nas seguintes informações:
     
     Tipo de Atendimento: ${tipo}
@@ -53,10 +53,10 @@ export async function POST(request: Request) {
     - [ponto 1]
     - [ponto 2]
     ...
-    `;
+    */
 
     // Simular a resposta da IA (substitua isso pela chamada real à OpenAI quando estiver pronta)
-    const resposta = gerarRespostaSimulada(tipo, sindicato);
+    const resposta = gerarRespostaSimulada(tipo, sindicato, descricao);
 
     // Salvar no Firestore
     const projetoRef = adminDb.collection("projetos").doc();
@@ -97,10 +97,10 @@ export async function POST(request: Request) {
 }
 
 // Função temporária para simular a resposta da IA
-function gerarRespostaSimulada(tipo: string, sindicato: string) {
+function gerarRespostaSimulada(tipo: string, sindicato: string, descricao: string = '') {
   return {
     titulo: `${tipo} - ${sindicato}`,
-    descricao: `Atendimento do tipo ${tipo} para o sindicato ${sindicato}. Este projeto visa atender às necessidades específicas do sindicato, garantindo a qualidade e eficiência no serviço prestado.`,
+    descricao: `Atendimento do tipo ${tipo} para o sindicato ${sindicato}. ${descricao ? `Detalhes adicionais: ${descricao}. ` : ''}Este projeto visa atender às necessidades específicas do sindicato, garantindo a qualidade e eficiência no serviço prestado.`,
     tarefas: [
       "Realizar levantamento inicial de requisitos",
       "Preparar documentação necessária",

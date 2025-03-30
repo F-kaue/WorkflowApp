@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react"
-import { Bot, Send, Star, X, ThumbsUp, ThumbsDown } from "lucide-react"
+import { Bot, Send, ThumbsUp, ThumbsDown } from "lucide-react"
 import { AITrainingButton } from "@/components/ai-training-button"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"

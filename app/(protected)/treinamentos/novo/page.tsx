@@ -4,9 +4,6 @@ import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -14,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/use-toast"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { CalendarIcon, Clock, Plus, X } from "lucide-react"
+import { CalendarIcon, Clock, X } from "lucide-react"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { useRouter } from "next/navigation"
@@ -45,7 +42,6 @@ export default function NovoTreinamentoPage() {
   const [novoParticipante, setNovoParticipante] = useState("")
   const [tipoInputOpen, setTipoInputOpen] = useState(false)
   const [sindicatoInputOpen, setSindicatoInputOpen] = useState(false)
-  const [participanteInputOpen, setParticipanteInputOpen] = useState(false)
   const [filteredSuggestions, setFilteredSuggestions] = useState<typeof participantesSalvos>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
 
@@ -220,7 +216,7 @@ export default function NovoTreinamentoPage() {
         })
 
         if (participantesRes.ok) {
-          const data = await participantesRes.json()
+          await participantesRes.json()
           setParticipantesSalvos(prev => [...prev, ...novosParticipantes])
         }
       }
@@ -427,7 +423,7 @@ export default function NovoTreinamentoPage() {
                           }}
                         >
                           <span>{p.email}</span>
-                          {p.frequencia > 0 && (
+                          {p.frequencia !== undefined && p.frequencia > 0 && (
                             <span className="text-xs text-muted-foreground">
                               {p.frequencia} treinamento{p.frequencia > 1 ? 's' : ''}
                             </span>
