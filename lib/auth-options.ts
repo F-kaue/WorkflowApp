@@ -2,6 +2,8 @@ import { NextAuthOptions } from "next-auth"
 import GoogleProvider from "next-auth/providers/google"
 
 export const authOptions: NextAuthOptions = {
+  // Configuração explícita da URL base para redirecionamentos
+  useSecureCookies: process.env.NEXTAUTH_URL?.startsWith('https://'),
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -11,6 +13,7 @@ export const authOptions: NextAuthOptions = {
           prompt: "select_account",
           access_type: "offline",
           response_type: "code",
+          redirect_uri: process.env.GOOGLE_REDIRECT_URI,
         },
       },
     }),
