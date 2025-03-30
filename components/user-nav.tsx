@@ -45,7 +45,7 @@ export function UserNav() {
           <DropdownMenuSeparator />
           <DropdownMenuItem
             className="cursor-pointer"
-            onClick={() => signOut()}
+            onClick={() => signOut({ callbackUrl: "https://workfloowapp.vercel.app/login" })}
           >
             <LogOut className="mr-2 h-4 w-4" />
             <span>Sair</span>

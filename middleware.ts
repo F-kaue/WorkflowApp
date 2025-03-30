@@ -8,8 +8,8 @@ export async function middleware(request: NextRequest) {
 
   if (isAuthPage) {
     if (token) {
-      // Garantir que o redirecionamento use a porta correta (3002)
-      return NextResponse.redirect(new URL("/", process.env.NEXTAUTH_URL || "http://localhost:3002"))
+      // Redirecionamento para a página inicial após login bem-sucedido
+      return NextResponse.redirect(new URL("/", request.url))
     }
     return null
   }

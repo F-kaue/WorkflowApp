@@ -44,7 +44,7 @@ export function UserMenu() {
           <span>Perfil</span>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => signOut({ callbackUrl: process.env.NEXTAUTH_URL || "http://localhost:3002" })}>
+        <DropdownMenuItem onClick={() => signOut({ callbackUrl: "https://workfloowapp.vercel.app/login" })}>
           <LogOut className="mr-2 h-4 w-4" />
           <span>Sair</span>
         </DropdownMenuItem>
