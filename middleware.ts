@@ -2,13 +2,9 @@ import { getToken } from "next-auth/jwt"
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 
-export async function middleware(request: NextRequest) {
-  // Verificar se a rota deve ser ignorada pelo middleware
-  const path = request.nextUrl.pathname
-  
-  // Ignorar explicitamente todas as rotas de API e recursos estáticos
-  // Isso é crucial para não interferir no fluxo de autenticação do NextAuth
-  if (
+// Função para verificar se a rota deve ser ignorada pelo middleware
+function shouldIgnoreRoute(path: string): boolean {
+  return (
     path.startsWith('/api/') || 
     path.startsWith('/_next/') || 
     path.includes('/api/auth/') ||
@@ -19,51 +15,62 @@ export async function middleware(request: NextRequest) {
     path.endsWith('.jpeg') ||
     path.includes('_buildManifest') ||
     path.includes('_ssgManifest')
-  ) {
+  )
+}
+
+// Função para verificar se a URL está relacionada ao fluxo de autenticação
+function isAuthRelatedUrl(url: URL): boolean {
+  const authParams = ['code', 'state', 'error', 'callback']
+  return authParams.some(param => url.searchParams.has(param)) ||
+         url.pathname.includes('/api/auth/') ||
+         url.pathname.includes('/auth/')
+}
+
+export async function middleware(request: NextRequest) {
+  const path = request.nextUrl.pathname
+  
+  // 1. Ignorar rotas específicas (API, recursos estáticos, etc)
+  if (shouldIgnoreRoute(path)) {
     return NextResponse.next()
   }
   
-  // Verificar se a URL contém parâmetros de autenticação do Google
-  // Se contiver, permitir o acesso sem verificação de token
-  if (request.nextUrl.search.includes('code=') && request.nextUrl.search.includes('state=')) {
+  // 2. Permitir acesso a URLs relacionadas ao fluxo de autenticação
+  if (isAuthRelatedUrl(request.nextUrl)) {
     return NextResponse.next()
   }
 
   try {
-    // Obter o token da requisição com timeout para evitar bloqueios
-    const tokenPromise = getToken({
+    // 3. Obter o token de autenticação
+    const token = await getToken({
       req: request,
       secret: process.env.NEXTAUTH_SECRET
     })
     
-    // Adicionar timeout para evitar que a requisição fique presa
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Token request timeout')), 3000)
-    })
+    // 4. Lógica de redirecionamento baseada no token e no caminho
     
-    // Usar Promise.race para garantir que não ficará preso esperando o token
-    const token = await Promise.race([tokenPromise, timeoutPromise])
-      .catch(error => {
-        console.error('Erro ao obter token:', error)
-        return null
-      })
-
-    // Verificar se é a página de login
-    const isAuthPage = path.startsWith("/login")
-
-    // Se estiver na página de login e já estiver autenticado, redireciona para home
-    if (isAuthPage && token) {
-      return NextResponse.redirect(new URL("/", request.url))
+    // Caso 1: Usuário na página de login, mas já está autenticado
+    if (path === '/login' && token) {
+      // Redirecionar para a página inicial ou para o callbackUrl se existir
+      const callbackUrl = request.nextUrl.searchParams.get('callbackUrl')
+      // Verificar se o callbackUrl não é a própria página de login para evitar loops
+      const redirectUrl = callbackUrl && !callbackUrl.includes('/login') ? callbackUrl : '/'
+      return NextResponse.redirect(new URL(redirectUrl, request.url))
     }
-
-    // Se não estiver na página de login e não estiver autenticado, redireciona para login
-    if (!isAuthPage && !token) {
-      const loginUrl = new URL("/login", request.url)
-      // Não adicionar callbackUrl para evitar loops de redirecionamento
+    
+    // Caso 2: Usuário tentando acessar rota protegida sem autenticação
+    if (!token && path !== '/login') {
+      // Redirecionar para a página de login
+      const loginUrl = new URL('/login', request.url)
+      // Adicionar callbackUrl apenas se não for uma rota de API e não for a própria página de login
+      if (!path.startsWith('/api/')) {
+        loginUrl.searchParams.set('callbackUrl', request.url)
+      }
+      // Adicionar timestamp para evitar cache
+      loginUrl.searchParams.set('t', Date.now().toString())
       return NextResponse.redirect(loginUrl)
     }
-
-    // Caso contrário, continua normalmente
+    
+    // Caso 3: Usuário autenticado acessando rota permitida ou usuário não autenticado acessando login
     return NextResponse.next()
   } catch (error) {
     console.error("Erro no middleware:", error)
