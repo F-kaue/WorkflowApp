@@ -8,6 +8,10 @@ function shouldIgnoreRoute(path: string): boolean {
     path.startsWith('/api/') || 
     path.startsWith('/_next/') || 
     path.includes('/api/auth/') ||
+    path.includes('/auth/signin') ||
+    path.includes('/auth/callback') ||
+    path.includes('/auth/error') ||
+    path.includes('/auth/signout') ||
     path === '/favicon.ico' ||
     path.endsWith('.svg') ||
     path.endsWith('.png') ||

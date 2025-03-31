@@ -3,8 +3,7 @@ import GoogleProvider from "next-auth/providers/google"
 
 export const authOptions: NextAuthOptions = {
   // Configuração explícita da URL base para redirecionamentos
-  useSecureCookies: process.env.NODE_ENV === "production",
-  trustHost: true,
+  useSecureCookies: true,
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -14,7 +13,6 @@ export const authOptions: NextAuthOptions = {
           prompt: "select_account",
           access_type: "offline",
           response_type: "code",
-          redirect_uri: process.env.GOOGLE_REDIRECT_URI,
         },
       },
     }),
@@ -50,9 +48,9 @@ export const authOptions: NextAuthOptions = {
       name: `next-auth.session-token`,
       options: {
         httpOnly: true,
-        sameSite: "lax",
+        sameSite: "none",
         path: "/",
-        secure: process.env.NODE_ENV === "production",
+        secure: true,
         maxAge: 30 * 24 * 60 * 60, // 30 dias em segundos
       },
     },
@@ -60,18 +58,29 @@ export const authOptions: NextAuthOptions = {
       name: `next-auth.callback-url`,
       options: {
         httpOnly: true,
-        sameSite: "lax",
+        sameSite: "none",
         path: "/",
-        secure: process.env.NODE_ENV === "production",
+        secure: true,
       },
     },
     csrfToken: {
       name: `next-auth.csrf-token`,
       options: {
         httpOnly: true,
-        sameSite: "lax",
+        sameSite: "none",
         path: "/",
-        secure: process.env.NODE_ENV === "production",
+        secure: true,
+      },
+    },
+    // Adicionar configuração explícita para o cookie de estado
+    state: {
+      name: `next-auth.state`,
+      options: {
+        httpOnly: true,
+        sameSite: "none",
+        path: "/",
+        secure: true,
+        maxAge: 60 * 15, // 15 minutos em segundos
       },
     },
   },
