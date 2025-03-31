@@ -20,25 +20,35 @@ if (isServer) {
   import('firebase-admin').then((adminModule) => {
     admin = adminModule
     
-    // Configuração do Firebase Admin
-    const firebaseAdminConfig = {
-      credential: admin.credential.cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n")
-      })
+    // Verificar se as variáveis de ambiente necessárias estão definidas
+    if (!process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_CLIENT_EMAIL || !process.env.FIREBASE_PRIVATE_KEY) {
+      console.warn('Variáveis de ambiente do Firebase Admin não estão configuradas. Alguns recursos podem não funcionar corretamente.')
+      return
     }
     
-    // Inicializar o app apenas se não tiver sido inicializado
-    if (!admin.apps.length) {
-      admin.initializeApp(firebaseAdminConfig)
+    try {
+      // Configuração do Firebase Admin
+      const firebaseAdminConfig = {
+        credential: admin.credential.cert({
+          projectId: process.env.FIREBASE_PROJECT_ID,
+          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+          privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n")
+        })
+      }
+      
+      // Inicializar o app apenas se não tiver sido inicializado
+      if (!admin.apps.length) {
+        admin.initializeApp(firebaseAdminConfig)
+      }
+      
+      // Inicializar serviços
+      adminDb = admin.firestore()
+      adminAuth = admin.auth()
+    } catch (error) {
+      console.error('Erro ao inicializar Firebase Admin:', error)
     }
-    
-    // Inicializar serviços
-    adminDb = admin.firestore()
-    adminAuth = admin.auth()
   }).catch(error => {
-    console.error('Erro ao inicializar Firebase Admin:', error)
+    console.error('Erro ao importar Firebase Admin:', error)
   })
 }
 

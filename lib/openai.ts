@@ -1,15 +1,30 @@
 import OpenAI from 'openai';
 
-if (!process.env.OPENAI_API_KEY) {
-  throw new Error('OPENAI_API_KEY não está definida nas variáveis de ambiente');
-}
+// Verificar se a API key está definida, mas não lançar erro
+let openai: OpenAI | null = null;
 
-export const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+if (!process.env.OPENAI_API_KEY) {
+  console.warn('OPENAI_API_KEY não está definida nas variáveis de ambiente. Funcionalidades de IA podem não estar disponíveis.');
+} else {
+  try {
+    openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  } catch (error) {
+    console.error('Erro ao inicializar cliente OpenAI:', error);
+  }
+}
 
 export async function OpenAIStream(prompt: string): Promise<Response> {
   try {
+    // Verificar se o cliente OpenAI está disponível
+    if (!openai) {
+      return new Response(JSON.stringify({ error: "Serviço de IA não está disponível no momento. Verifique as configurações do ambiente." }), { 
+        status: 503,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+    
     const completion = await openai.chat.completions.create({
       messages: [
         {

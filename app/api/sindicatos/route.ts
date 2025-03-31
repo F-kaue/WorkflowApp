@@ -4,6 +4,14 @@ import { adminDb } from "@/lib/firebase-admin"
 // GET - Listar todos os sindicatos
 export async function GET() {
   try {
+    // Verificar se adminDb está disponível
+    if (!adminDb) {
+      return NextResponse.json(
+        { error: "Serviço de banco de dados não está disponível no momento" },
+        { status: 503 }
+      )
+    }
+    
     const snapshot = await adminDb.collection("sindicatos").get()
     const sindicatos = snapshot.docs.map(doc => doc.data().nome)
     return NextResponse.json(sindicatos)
@@ -20,6 +28,14 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const { nome } = await request.json()
+    
+    // Verificar se adminDb está disponível
+    if (!adminDb) {
+      return NextResponse.json(
+        { error: "Serviço de banco de dados não está disponível no momento" },
+        { status: 503 }
+      )
+    }
     
     // Verifica se já existe
     const snapshot = await adminDb
@@ -48,6 +64,14 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
+    
+    // Verificar se adminDb está disponível
+    if (!adminDb) {
+      return NextResponse.json(
+        { error: "Serviço de banco de dados não está disponível no momento" },
+        { status: 503 }
+      )
+    }
     const id = searchParams.get('id')
 
     if (!id) {

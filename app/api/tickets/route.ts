@@ -3,6 +3,13 @@ import { adminDb } from "@/lib/firebase-admin"
 
 export async function GET() {
   try {
+    // Verificar se adminDb está disponível
+    if (!adminDb) {
+      return NextResponse.json(
+        { error: "Serviço de banco de dados não está disponível no momento" },
+        { status: 503 }
+      )
+    }
     const ticketsRef = adminDb.collection("tickets")
     const snapshot = await ticketsRef.orderBy("dataCriacao", "desc").get()
     
@@ -25,6 +32,14 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    // Verificar se adminDb está disponível
+    if (!adminDb) {
+      return NextResponse.json(
+        { error: "Serviço de banco de dados não está disponível no momento" },
+        { status: 503 }
+      )
+    }
+    
     const data = await request.json()
     const ticketRef = adminDb.collection("tickets").doc()
     
@@ -46,6 +61,14 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    // Verificar se adminDb está disponível
+    if (!adminDb) {
+      return NextResponse.json(
+        { error: "Serviço de banco de dados não está disponível no momento" },
+        { status: 503 }
+      )
+    }
+    
     const { id } = await request.json()
     
     if (!id) {

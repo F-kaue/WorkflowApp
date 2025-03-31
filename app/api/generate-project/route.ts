@@ -58,6 +58,22 @@ export async function POST(request: Request) {
     // Simular a resposta da IA (substitua isso pela chamada real à OpenAI quando estiver pronta)
     const resposta = gerarRespostaSimulada(tipo, sindicato, descricao);
 
+    // Verificar se adminDb está disponível
+    if (!adminDb) {
+      return NextResponse.json(
+        { error: "Serviço de banco de dados não está disponível no momento" },
+        { status: 503 }
+      )
+    }
+    
+    // Verificar se adminDb está disponível
+    if (!adminDb) {
+      return NextResponse.json(
+        { error: "Serviço de banco de dados não está disponível no momento" },
+        { status: 503 }
+      )
+    }
+    
     // Salvar no Firestore
     const projetoRef = adminDb.collection("projetos").doc();
     await projetoRef.set({

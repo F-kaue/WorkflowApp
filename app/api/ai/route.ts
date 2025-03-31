@@ -1,13 +1,29 @@
-import { OpenAI } from "openai"
 import { NextResponse } from "next/server"
+import OpenAI from "openai"
 
-// Configuração da API OpenAI
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+// Configuração da API OpenAI - com verificação de ambiente
+let openai: OpenAI | null = null
+
+if (process.env.OPENAI_API_KEY) {
+  try {
+    openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    })
+  } catch (error) {
+    console.error('Erro ao inicializar cliente OpenAI:', error)
+  }
+}
 
 export async function POST(request: Request) {
   try {
+    // Verificar se o cliente OpenAI está disponível
+    if (!openai) {
+      return NextResponse.json(
+        { error: "Serviço de IA não está disponível no momento. Verifique as configurações do ambiente." },
+        { status: 503 }
+      )
+    }
+    
     const { solicitacao, cliente } = await request.json()
 
     if (!solicitacao) {
@@ -121,4 +137,4 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
-} 
+}

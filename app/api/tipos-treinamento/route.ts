@@ -4,6 +4,14 @@ import { adminDb } from "@/lib/firebase-admin"
 // GET - Listar todos os tipos de treinamento
 export async function GET() {
   try {
+    // Verificar se adminDb está disponível
+    if (!adminDb) {
+      return NextResponse.json(
+        { error: "Serviço de banco de dados não está disponível no momento" },
+        { status: 503 }
+      )
+    }
+    
     const snapshot = await adminDb.collection("tipos-treinamento").get()
     const tipos = snapshot.docs.map(doc => doc.data().tipo)
     return NextResponse.json(tipos)
@@ -19,6 +27,14 @@ export async function GET() {
 // POST - Adicionar um novo tipo de treinamento
 export async function POST(request: Request) {
   try {
+    // Verificar se adminDb está disponível
+    if (!adminDb) {
+      return NextResponse.json(
+        { error: "Serviço de banco de dados não está disponível no momento" },
+        { status: 503 }
+      )
+    }
+    
     const { tipo } = await request.json()
     
     // Verifica se já existe
@@ -47,6 +63,14 @@ export async function POST(request: Request) {
 // DELETE - Excluir um tipo de treinamento
 export async function DELETE(request: Request) {
   try {
+    // Verificar se adminDb está disponível
+    if (!adminDb) {
+      return NextResponse.json(
+        { error: "Serviço de banco de dados não está disponível no momento" },
+        { status: 503 }
+      )
+    }
+    
     const { searchParams } = new URL(request.url)
     const tipo = searchParams.get('tipo')
 

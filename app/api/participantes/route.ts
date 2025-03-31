@@ -3,6 +3,14 @@ import { adminDb } from "@/lib/firebase-admin"
 
 export async function GET() {
   try {
+    // Verificar se adminDb está disponível
+    if (!adminDb) {
+      return NextResponse.json(
+        { error: "Serviço de banco de dados não está disponível no momento" },
+        { status: 503 }
+      )
+    }
+    
     // Buscar participantes da coleção de participantes
     const participantesRef = adminDb.collection("participantes")
     const participantesSnap = await participantesRef.get()
@@ -48,6 +56,14 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const { participantes } = await request.json()
+    
+    // Verificar se adminDb está disponível
+    if (!adminDb) {
+      return NextResponse.json(
+        { error: "Serviço de banco de dados não está disponível no momento" },
+        { status: 503 }
+      )
+    }
 
     if (!participantes || !Array.isArray(participantes)) {
       return NextResponse.json(

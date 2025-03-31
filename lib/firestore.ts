@@ -62,6 +62,12 @@ export type Treinamento = {
 
 export async function listarTreinamentos(): Promise<Treinamento[]> {
   try {
+    // Verificar se adminDb está disponível
+    if (!adminDb) {
+      console.error("Serviço de banco de dados não está disponível")
+      return []
+    }
+    
     const treinamentosRef = adminDb.collection("treinamentos")
     const snapshot = await treinamentosRef.orderBy("dataCriacao", "desc").get()
     
@@ -77,6 +83,12 @@ export async function listarTreinamentos(): Promise<Treinamento[]> {
 
 export async function criarTreinamento(treinamento: Omit<Treinamento, "id">): Promise<string> {
   try {
+    // Verificar se adminDb está disponível
+    if (!adminDb) {
+      console.error("Serviço de banco de dados não está disponível")
+      throw new Error("Serviço de banco de dados não está disponível no momento")
+    }
+    
     const docRef = await adminDb.collection("treinamentos").add({
       ...treinamento,
       dataCriacao: new Date()
@@ -90,6 +102,12 @@ export async function criarTreinamento(treinamento: Omit<Treinamento, "id">): Pr
 
 export async function excluirTreinamento(id: string): Promise<void> {
   try {
+    // Verificar se adminDb está disponível
+    if (!adminDb) {
+      console.error("Serviço de banco de dados não está disponível")
+      throw new Error("Serviço de banco de dados não está disponível no momento")
+    }
+    
     await adminDb.collection("treinamentos").doc(id).delete()
   } catch (error) {
     console.error("Erro ao excluir treinamento:", error)

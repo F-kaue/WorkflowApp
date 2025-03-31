@@ -36,7 +36,9 @@ export async function logSystemAction(logData: SystemLogData): Promise<string> {
       
       // Verificar novamente
       if (!adminDb) {
-        throw new Error("Firebase Admin não está disponível no ambiente atual")
+        console.warn("Firebase Admin não está disponível no ambiente atual. O log será registrado apenas no console.")
+        console.info("LOG:", logData)
+        return "console-only-log-" + Date.now()
       }
     }
     

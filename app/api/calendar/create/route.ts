@@ -61,7 +61,7 @@ export async function POST(request: Request) {
         sendNotifications: true,
       })
 
-      if (response.data.hangoutLink) {
+      if (response.data.hangoutLink && adminDb) {
         // Atualizar o treinamento com o link da reunião
         const treinamentosRef = adminDb.collection("treinamentos")
         const snapshot = await treinamentosRef

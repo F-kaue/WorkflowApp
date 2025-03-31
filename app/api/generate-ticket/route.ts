@@ -1,5 +1,20 @@
 import { NextResponse } from "next/server"
-import { openai } from "@/lib/openai"
+import OpenAI from "openai"
+
+// Importar o cliente OpenAI do arquivo local
+// Como o cliente não é exportado diretamente, vamos usar a variável local
+let openai: OpenAI | null = null
+
+// Inicializar o cliente OpenAI
+if (process.env.OPENAI_API_KEY) {
+  try {
+    openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    })
+  } catch (error) {
+    console.error('Erro ao inicializar cliente OpenAI:', error)
+  }
+}
 
 export async function POST(request: Request) {
   try {
@@ -64,6 +79,14 @@ O ticket deve seguir o seguinte formato em Markdown, sendo extremamente detalhad
 ## Histórico de Solicitações Relacionadas
 [Mencione se existem solicitações anteriores relacionadas a este projeto]
 `
+
+    // Verificar se o cliente OpenAI está disponível
+    if (!openai) {
+      return NextResponse.json(
+        { error: "Serviço de IA não está disponível no momento. Verifique as configurações do ambiente." },
+        { status: 503 }
+      )
+    }
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4-turbo-preview",
