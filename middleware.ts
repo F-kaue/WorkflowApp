@@ -6,6 +6,8 @@ import type { NextRequest } from "next/server"
 const publicRoutes = [
   '/login',
   '/api/auth',
+  '/auth',
+  '/callback',
   '/_next',
   '/favicon.ico',
   '.svg',
@@ -13,16 +15,27 @@ const publicRoutes = [
   '.jpg',
   '.jpeg',
   '.gif',
-  '.ico'
+  '.ico',
+  '.js',
+  '.css'
 ]
 
-// Função simplificada para verificar se uma rota é pública
+// Função melhorada para verificar se uma rota é pública
 function isPublicRoute(path: string): boolean {
-  // Verificar explicitamente rotas de autenticação
-  if (path.includes('/api/auth/callback/') || path.startsWith('/api/auth/')) {
+  // Verificar explicitamente rotas de autenticação (verificação mais abrangente)
+  if (path.includes('/api/auth') || path.includes('/auth/') || path.includes('/callback/')) {
+    console.log(`[Middleware] Rota de autenticação detectada como pública: ${path}`)
     return true
   }
-  return publicRoutes.some(route => path.startsWith(route) || path.includes(route) || path.endsWith(route))
+  
+  // Verificar outras rotas públicas
+  const isPublic = publicRoutes.some(route => path.startsWith(route) || path.includes(route) || path.endsWith(route))
+  
+  if (isPublic) {
+    console.log(`[Middleware] Rota pública detectada via lista: ${path}`)
+  }
+  
+  return isPublic
 }
 
 export async function middleware(request: NextRequest) {
@@ -34,8 +47,12 @@ export async function middleware(request: NextRequest) {
   const redirectCount = request.headers.get('x-redirect-count') || '0'
   const count = parseInt(redirectCount, 10)
   
-  if (count > 2) {
+  // Aumentar a tolerância para loops em produção
+  const maxRedirects = process.env.NODE_ENV === 'production' ? 1 : 2
+  
+  if (count > maxRedirects) {
     console.log(`[Middleware] Detectado possível loop de redirecionamento (${count}), permitindo acesso`)
+    console.log(`[Middleware] Ambiente: ${process.env.NODE_ENV}, URL: ${request.nextUrl.toString()}`)
     return NextResponse.next()
   }
   
@@ -59,7 +76,12 @@ export async function middleware(request: NextRequest) {
   
   // Para rotas protegidas, verificar token
   try {
-    console.log(`[Middleware] Verificando token para rota protegida: ${path}`)
+    console.log(`[Middleware] Verificando token para rota protegida: ${path}, Ambiente: ${process.env.NODE_ENV}`)
+    
+    // Adicionar mais informações de debug para ajudar a diagnosticar problemas
+    console.log(`[Middleware] NEXTAUTH_URL: ${process.env.NEXTAUTH_URL || 'não definido'}`)
+    console.log(`[Middleware] Cookies presentes: ${request.headers.get('cookie') ? 'Sim' : 'Não'}`)
+    
     const token = await getToken({
       req: request,
       secret: process.env.NEXTAUTH_SECRET
@@ -73,6 +95,20 @@ export async function middleware(request: NextRequest) {
       const url = request.nextUrl.clone()
       url.pathname = '/login'
       url.search = ''
+      
+      // Garantir que a URL seja absoluta em produção
+      if (process.env.NODE_ENV === 'production' && process.env.NEXTAUTH_URL) {
+        // Verificar se já estamos na página de login para evitar loops
+        if (path === '/login') {
+          console.log(`[Middleware] Já estamos na página de login, permitindo acesso para evitar loop`)
+          return NextResponse.next()
+        }
+        
+        // Usar URL base configurada para garantir redirecionamentos corretos
+        const baseUrl = new URL(process.env.NEXTAUTH_URL)
+        url.host = baseUrl.host
+        url.protocol = baseUrl.protocol
+      }
       
       console.log(`[Middleware] Redirecionando para login: ${url.toString()}`)
       const response = NextResponse.redirect(url)
@@ -88,14 +124,16 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   } catch (error) {
     console.error("[Middleware] Erro:", error)
+    console.log(`[Middleware] Erro ao processar rota ${path} em ambiente ${process.env.NODE_ENV}`)
     // Em caso de erro, permitir acesso para evitar loops
     return NextResponse.next()
   }
 }
 
-// Simplificar o matcher para incluir apenas as rotas necessárias
+// Configuração mais precisa do matcher para evitar problemas com rotas de autenticação
 export const config = {
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+    // Excluir explicitamente todas as rotas relacionadas à autenticação e recursos estáticos
+    '/((?!api\/auth|_next\/static|_next\/image|favicon\.ico|.*\.(?:svg|png|jpg|jpeg|gif|ico)).*)',
   ],
 }
