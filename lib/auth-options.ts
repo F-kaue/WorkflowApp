@@ -3,7 +3,8 @@ import GoogleProvider from "next-auth/providers/google"
 
 export const authOptions: NextAuthOptions = {
   // Configuração explícita da URL base para redirecionamentos
-  useSecureCookies: process.env.NEXTAUTH_URL?.startsWith('https://'),
+  useSecureCookies: process.env.NODE_ENV === "production",
+  trustHost: true,
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -43,10 +44,29 @@ export const authOptions: NextAuthOptions = {
     signIn: "/login",
     error: "/login", // Página de erro personalizada
   },
-  // Configuração explícita de URLs para garantir redirecionamentos corretos
+  // Configuração explícita de cookies para garantir compatibilidade e evitar problemas
   cookies: {
     sessionToken: {
       name: `next-auth.session-token`,
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: process.env.NODE_ENV === "production",
+        maxAge: 30 * 24 * 60 * 60, // 30 dias em segundos
+      },
+    },
+    callbackUrl: {
+      name: `next-auth.callback-url`,
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: process.env.NODE_ENV === "production",
+      },
+    },
+    csrfToken: {
+      name: `next-auth.csrf-token`,
       options: {
         httpOnly: true,
         sameSite: "lax",

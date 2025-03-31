@@ -16,76 +16,55 @@ function shouldIgnoreRoute(path: string): boolean {
     path.endsWith('.gif') ||
     path.endsWith('.ico') ||
     path.includes('_buildManifest') ||
-    path.includes('_ssgManifest')
+    path.includes('_ssgManifest') ||
+    path.includes('accounts.google.com') ||
+    path.includes('CheckConnection')
   )
 }
 
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname
   
-  // Detectar potencial loop de redirecionamento
-  const redirectCount = parseInt(request.cookies.get('redirectCount')?.value || '0')
-  if (redirectCount > 2) {
-    // Se detectarmos mais de 2 redirecionamentos, interrompemos o ciclo
-    const response = NextResponse.next()
-    response.cookies.set('redirectCount', '0')
-    return response
-  }
-  
   // 1. Ignorar rotas específicas
   if (shouldIgnoreRoute(path)) {
     return NextResponse.next()
   }
   
-  // 2. Lidar com página de login
-  if (path === '/login') {
-    try {
+  // 2. Simplificar a lógica para evitar loops de redirecionamento
+  try {
+    // Verificar se é a página de login
+    if (path === '/login') {
       const token = await getToken({
         req: request,
         secret: process.env.NEXTAUTH_SECRET
       })
       
-      // Se estiver autenticado, redirecionar para home
+      // Se já estiver autenticado na página de login, redirecionar para home
       if (token) {
-        const response = NextResponse.redirect(new URL('/', request.url))
-        response.cookies.set('redirectCount', '0') // Reset contador
-        return response
+        return NextResponse.redirect(new URL('/', request.url))
       }
-    } catch (error) {
-      console.error("Erro ao verificar token na página de login:", error)
+      
+      // Se não estiver autenticado, permitir acesso à página de login
+      return NextResponse.next()
     }
     
-    // Se não estiver autenticado ou houver erro, permitir acesso à página de login
-    return NextResponse.next()
-  }
-  
-  // 3. Verificar autenticação para rotas protegidas (agora todas as rotas não-públicas)
-  try {
+    // 3. Para todas as outras rotas protegidas, verificar autenticação
     const token = await getToken({
       req: request,
       secret: process.env.NEXTAUTH_SECRET
     })
     
-    // Se não estiver autenticado, redirecionar para login
+    // Se não estiver autenticado, redirecionar para login sem parâmetros adicionais
+    // para evitar problemas com cookies e redirecionamentos
     if (!token) {
-      const loginUrl = new URL('/login', request.url)
-      // Adicionar callback URL como parâmetro para retornar após login
-      loginUrl.searchParams.set('callbackUrl', request.nextUrl.pathname)
-      
-      // Incrementar contador de redirecionamentos para detectar loops
-      const response = NextResponse.redirect(loginUrl)
-      response.cookies.set('redirectCount', String(redirectCount + 1))
-      return response
+      return NextResponse.redirect(new URL('/login', request.url))
     }
     
-    // Reset contador se a navegação for bem-sucedida
-    const response = NextResponse.next()
-    response.cookies.set('redirectCount', '0')
-    return response
-    
+    // Se estiver autenticado, permitir acesso
+    return NextResponse.next()
   } catch (error) {
     console.error("Erro no middleware:", error)
-    // Em caso de erro, evitar redirecionamento para prevenir loops
+    // Em caso de erro, permitir acesso para evitar loops
     return NextResponse.next()
   }
 }

@@ -6,6 +6,7 @@ import { authOptions } from "@/lib/auth-options"
 import { Toaster } from "@/components/ui/toaster"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Suspense } from "react"
+import { Metadata } from "next"
 
 // Otimizar carregamento da fonte
 const inter = Inter({ 
