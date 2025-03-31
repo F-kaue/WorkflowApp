@@ -1,5 +1,4 @@
 import { db } from "@/lib/firebase"
-import { adminDb } from "@/lib/firebase-admin"
 import { collection, getDocs, doc, addDoc, deleteDoc, query, orderBy, Timestamp, DocumentData, QueryDocumentSnapshot } from "firebase/firestore"
 
 export type Ticket = {
@@ -62,16 +61,10 @@ export type Treinamento = {
 
 export async function listarTreinamentos(): Promise<Treinamento[]> {
   try {
-    // Verificar se adminDb está disponível
-    if (!adminDb) {
-      console.error("Serviço de banco de dados não está disponível")
-      return []
-    }
+    const treinamentosRef = collection(db, "treinamentos")
+    const snapshot = await getDocs(query(treinamentosRef, orderBy("dataCriacao", "desc")))
     
-    const treinamentosRef = adminDb.collection("treinamentos")
-    const snapshot = await treinamentosRef.orderBy("dataCriacao", "desc").get()
-    
-    return snapshot.docs.map(doc => ({
+    return snapshot.docs.map((doc: QueryDocumentSnapshot<DocumentData>) => ({
       id: doc.id,
       ...doc.data()
     })) as Treinamento[]
@@ -83,15 +76,9 @@ export async function listarTreinamentos(): Promise<Treinamento[]> {
 
 export async function criarTreinamento(treinamento: Omit<Treinamento, "id">): Promise<string> {
   try {
-    // Verificar se adminDb está disponível
-    if (!adminDb) {
-      console.error("Serviço de banco de dados não está disponível")
-      throw new Error("Serviço de banco de dados não está disponível no momento")
-    }
-    
-    const docRef = await adminDb.collection("treinamentos").add({
+    const docRef = await addDoc(collection(db, "treinamentos"), {
       ...treinamento,
-      dataCriacao: new Date()
+      dataCriacao: Timestamp.now()
     })
     return docRef.id
   } catch (error) {
@@ -102,13 +89,7 @@ export async function criarTreinamento(treinamento: Omit<Treinamento, "id">): Pr
 
 export async function excluirTreinamento(id: string): Promise<void> {
   try {
-    // Verificar se adminDb está disponível
-    if (!adminDb) {
-      console.error("Serviço de banco de dados não está disponível")
-      throw new Error("Serviço de banco de dados não está disponível no momento")
-    }
-    
-    await adminDb.collection("treinamentos").doc(id).delete()
+    await deleteDoc(doc(db, "treinamentos", id))
   } catch (error) {
     console.error("Erro ao excluir treinamento:", error)
     throw error
