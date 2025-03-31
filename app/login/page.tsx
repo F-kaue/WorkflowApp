@@ -10,22 +10,46 @@ export default function LoginPage() {
   const router = useRouter()
   const [isRedirecting, setIsRedirecting] = useState(false)
   
-  // Simplificando a lógica de redirecionamento para evitar loops
+  // Lógica de redirecionamento completamente reescrita para evitar loops
   useEffect(() => {
-    if (status === "authenticated" && session && !isRedirecting) {
+    // Registrar informações detalhadas para depuração
+    const sessionInfo = {
+      status,
+      hasSession: !!session,
+      isRedirecting,
+      pathname: window.location.pathname
+    }
+    
+    console.log("[LoginPage] Estado atual:", sessionInfo)
+    
+    // Só redirecionar se estiver autenticado, não estiver já redirecionando, e estiver na página de login
+    if (status === "authenticated" && session && !isRedirecting && window.location.pathname === "/login") {
+      console.log("[LoginPage] Autenticado na página de login, preparando redirecionamento")
+      
+      // Marcar que estamos redirecionando para evitar múltiplos redirecionamentos
       setIsRedirecting(true)
-      router.push("/")
+      
+      // Usar um timeout maior para garantir que o estado seja atualizado antes do redirecionamento
+      const redirectTimer = setTimeout(() => {
+        console.log("[LoginPage] Executando redirecionamento para /")
+        // Usar replace em vez de push para evitar problemas com o histórico de navegação
+        router.replace("/")
+      }, 1000) // Timeout maior para garantir que tudo seja processado
+      
+      // Limpar o timeout se o componente for desmontado
+      return () => clearTimeout(redirectTimer)
     }
   }, [session, status, router, isRedirecting])
-
+  
   const handleGoogleLogin = async () => {
     try {
+      console.log("[LoginPage] Iniciando login com Google")
       await signIn("google", {
         callbackUrl: "/",
-        redirect: true,
+        redirect: false, // Mudando para false para controlar o redirecionamento manualmente
       })
     } catch (error) {
-      console.error("Erro ao fazer login:", error)
+      console.error("[LoginPage] Erro ao fazer login:", error)
     }
   }
 
@@ -39,6 +63,11 @@ export default function LoginPage() {
           <p className="text-sm text-muted-foreground">
             Faça login para acessar o sistema
           </p>
+          {/* Informações de depuração visíveis */}
+          <div className="text-xs text-muted-foreground bg-muted p-2 rounded overflow-auto max-h-[100px] text-left mt-2">
+            <p>Status: {status} | Redirecionando: {isRedirecting ? "Sim" : "Não"}</p>
+            <p>Rota: {typeof window !== "undefined" ? window.location.pathname : ""}</p>
+          </div>
         </div>
         <Button
           className="w-full"
