@@ -18,6 +18,10 @@ const publicRoutes = [
 
 // Função simplificada para verificar se uma rota é pública
 function isPublicRoute(path: string): boolean {
+  // Verificar explicitamente rotas de autenticação
+  if (path.includes('/api/auth/callback/') || path.startsWith('/api/auth/')) {
+    return true
+  }
   return publicRoutes.some(route => path.startsWith(route) || path.includes(route) || path.endsWith(route))
 }
 
@@ -26,36 +30,30 @@ export async function middleware(request: NextRequest) {
   
   console.log(`[Middleware] Processando rota: ${path}, URL completa: ${request.nextUrl.toString()}`)
   
+  // Verificar se já estamos em um loop de redirecionamento
+  const redirectCount = request.headers.get('x-redirect-count') || '0'
+  const count = parseInt(redirectCount, 10)
+  
+  if (count > 2) {
+    console.log(`[Middleware] Detectado possível loop de redirecionamento (${count}), permitindo acesso`)
+    return NextResponse.next()
+  }
+  
   // Ignorar completamente rotas de API e recursos estáticos para evitar problemas
-  if (path.startsWith('/api/') || path.startsWith('/_next/') || path.includes('/api/auth/')) {
+  if (path.startsWith('/api/') || path.startsWith('/_next/') || path.includes('.')) {
     console.log(`[Middleware] Rota ignorada (API/estático): ${path}`)
+    return NextResponse.next()
+  }
+  
+  // Verificar explicitamente todas as rotas relacionadas à autenticação
+  if (path.includes('/api/auth') || path.includes('/auth/') || path.includes('/callback/')) {
+    console.log(`[Middleware] Rota de autenticação ignorada: ${path}`)
     return NextResponse.next()
   }
   
   // Verificar se é uma rota pública
   if (isPublicRoute(path)) {
     console.log(`[Middleware] Rota pública permitida: ${path}`)
-    
-    // Se o usuário já está autenticado e tenta acessar a página de login, redirecionar para a home
-    if (path === '/login') {
-      try {
-        const token = await getToken({
-          req: request,
-          secret: process.env.NEXTAUTH_SECRET
-        })
-        
-        if (token) {
-          console.log(`[Middleware] Usuário autenticado tentando acessar /login, redirecionando para /`)
-          const url = request.nextUrl.clone()
-          url.pathname = '/'
-          url.search = ''
-          return NextResponse.redirect(url)
-        }
-      } catch (error) {
-        console.error("[Middleware] Erro ao verificar token na rota /login:", error)
-      }
-    }
-    
     return NextResponse.next()
   }
   
@@ -77,7 +75,12 @@ export async function middleware(request: NextRequest) {
       url.search = ''
       
       console.log(`[Middleware] Redirecionando para login: ${url.toString()}`)
-      return NextResponse.redirect(url)
+      const response = NextResponse.redirect(url)
+      
+      // Incrementar contador de redirecionamentos para detectar loops
+      response.headers.set('x-redirect-count', (count + 1).toString())
+      
+      return response
     }
     
     // Se houver token, permitir acesso

@@ -1,6 +1,17 @@
 import { NextAuthOptions } from "next-auth"
 import GoogleProvider from "next-auth/providers/google"
 
+// Determina a URL base com base no ambiente
+// IMPORTANTE: Esta URL deve corresponder exatamente à URL configurada no Google Cloud Console
+// O erro redirect_uri_mismatch ocorre quando esta URL não corresponde à URL registrada no Google Cloud Console
+// A URL de redirecionamento deve corresponder exatamente à URL registrada no Google Cloud Console
+// Em desenvolvimento: http://localhost:3002/api/auth/callback/google
+// Em produção: https://workfloowapp.vercel.app/api/auth/callback/google
+const baseUrl = process.env.NEXTAUTH_URL || 
+  (process.env.NODE_ENV === "production" 
+    ? "https://workfloowapp.vercel.app" 
+    : "http://localhost:3002")
+
 export const authOptions: NextAuthOptions = {
   // Configuração explícita da URL base para redirecionamentos
   useSecureCookies: process.env.NODE_ENV === "production",
@@ -13,6 +24,8 @@ export const authOptions: NextAuthOptions = {
           prompt: "select_account",
           access_type: "offline",
           response_type: "code",
+          // Configuração correta da URL de callback dentro dos parâmetros de autorização
+          redirect_uri: `${baseUrl}/api/auth/callback/google`
         },
       },
     }),
@@ -37,50 +50,38 @@ export const authOptions: NextAuthOptions = {
       }
       return session
     },
+    async signIn({ user, account, profile, email, credentials }) {
+      // Permitir o login e garantir que o redirecionamento funcione
+      return true
+    },
+    async redirect({ url, baseUrl }) {
+      // Garantir que o redirecionamento após o login funcione corretamente
+      // Se a URL for relativa (começar com /), adicione a URL base
+      if (url.startsWith('/')) {
+        return `${baseUrl}${url}`
+      }
+      // Se a URL já for absoluta e pertencer ao mesmo site, permita
+      else if (url.startsWith(baseUrl)) {
+        return url
+      }
+      // Caso contrário, redirecione para a página inicial
+      return baseUrl
+    },
   },
   pages: {
     signIn: "/login",
     error: "/login", // Página de erro personalizada
   },
-  // Configuração explícita de cookies para garantir compatibilidade e evitar problemas
+  // Configuração simplificada de cookies para evitar problemas de compatibilidade
   cookies: {
     sessionToken: {
       name: `next-auth.session-token`,
       options: {
         httpOnly: true,
-        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+        sameSite: "lax",
         path: "/",
         secure: process.env.NODE_ENV === "production",
         maxAge: 30 * 24 * 60 * 60, // 30 dias em segundos
-      },
-    },
-    callbackUrl: {
-      name: `next-auth.callback-url`,
-      options: {
-        httpOnly: true,
-        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-        path: "/",
-        secure: process.env.NODE_ENV === "production",
-      },
-    },
-    csrfToken: {
-      name: `next-auth.csrf-token`,
-      options: {
-        httpOnly: true,
-        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-        path: "/",
-        secure: process.env.NODE_ENV === "production",
-      },
-    },
-    // Adicionar configuração explícita para o cookie de estado
-    state: {
-      name: `next-auth.state`,
-      options: {
-        httpOnly: true,
-        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-        path: "/",
-        secure: process.env.NODE_ENV === "production",
-        maxAge: 60 * 15, // 15 minutos em segundos
       },
     },
   },
