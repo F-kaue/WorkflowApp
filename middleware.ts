@@ -11,7 +11,7 @@ export async function middleware(request: NextRequest) {
       // Redirecionamento para a página inicial após login bem-sucedido
       return NextResponse.redirect(new URL("/", request.url))
     }
-    return null
+    return NextResponse.next()
   }
 
   if (!token) {
