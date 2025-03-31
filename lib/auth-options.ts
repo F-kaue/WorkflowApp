@@ -72,7 +72,7 @@ export const authOptions: NextAuthOptions = {
     signIn: "/login",
     error: "/login", // Página de erro personalizada
   },
-  // Configuração simplificada de cookies para evitar problemas de compatibilidade
+  // Configuração otimizada de cookies para ambiente de produção no Vercel
   cookies: {
     sessionToken: {
       name: `next-auth.session-token`,
@@ -81,7 +81,10 @@ export const authOptions: NextAuthOptions = {
         sameSite: "lax",
         path: "/",
         secure: process.env.NODE_ENV === "production",
-        maxAge: 30 * 24 * 60 * 60, // 30 dias em segundos
+        // Não definir domínio para permitir que o navegador use o domínio atual
+        domain: undefined,
+        // Reduzir o tempo de vida do cookie para evitar problemas de sessão
+        maxAge: 7 * 24 * 60 * 60, // 7 dias em segundos
       },
     },
   },

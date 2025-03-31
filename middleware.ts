@@ -17,13 +17,20 @@ const publicRoutes = [
   '.gif',
   '.ico',
   '.js',
-  '.css'
+  '.css',
+  // Adicionar rotas específicas de autenticação do Google
+  '/api/auth/signin',
+  '/api/auth/callback',
+  '/api/auth/signout',
+  '/api/auth/session',
+  '/api/auth/csrf',
+  '/api/auth/providers'
 ]
 
 // Função melhorada para verificar se uma rota é pública
 function isPublicRoute(path: string): boolean {
   // Verificar explicitamente rotas de autenticação (verificação mais abrangente)
-  if (path.includes('/api/auth') || path.includes('/auth/') || path.includes('/callback/')) {
+  if (path.includes('/api/auth') || path.includes('/auth') || path.includes('/callback') || path === '/login') {
     console.log(`[Middleware] Rota de autenticação detectada como pública: ${path}`)
     return true
   }
@@ -48,7 +55,7 @@ export async function middleware(request: NextRequest) {
   const count = parseInt(redirectCount, 10)
   
   // Aumentar a tolerância para loops em produção
-  const maxRedirects = process.env.NODE_ENV === 'production' ? 1 : 2
+  const maxRedirects = process.env.NODE_ENV === 'production' ? 3 : 2
   
   if (count > maxRedirects) {
     console.log(`[Middleware] Detectado possível loop de redirecionamento (${count}), permitindo acesso`)
@@ -63,7 +70,8 @@ export async function middleware(request: NextRequest) {
   }
   
   // Verificar explicitamente todas as rotas relacionadas à autenticação
-  if (path.includes('/api/auth') || path.includes('/auth/') || path.includes('/callback/')) {
+  // Usar uma verificação mais abrangente para garantir que todas as rotas de autenticação sejam ignoradas
+  if (path.includes('/api/auth') || path.includes('/auth') || path.includes('/callback') || path === '/login') {
     console.log(`[Middleware] Rota de autenticação ignorada: ${path}`)
     return NextResponse.next()
   }
@@ -96,18 +104,19 @@ export async function middleware(request: NextRequest) {
       url.pathname = '/login'
       url.search = ''
       
+      // Verificar se já estamos na página de login para evitar loops
+      if (path === '/login') {
+        console.log(`[Middleware] Já estamos na página de login, permitindo acesso para evitar loop`)
+        return NextResponse.next()
+      }
+      
       // Garantir que a URL seja absoluta em produção
       if (process.env.NODE_ENV === 'production' && process.env.NEXTAUTH_URL) {
-        // Verificar se já estamos na página de login para evitar loops
-        if (path === '/login') {
-          console.log(`[Middleware] Já estamos na página de login, permitindo acesso para evitar loop`)
-          return NextResponse.next()
-        }
-        
         // Usar URL base configurada para garantir redirecionamentos corretos
         const baseUrl = new URL(process.env.NEXTAUTH_URL)
         url.host = baseUrl.host
         url.protocol = baseUrl.protocol
+        url.port = baseUrl.port || ''
       }
       
       console.log(`[Middleware] Redirecionando para login: ${url.toString()}`)
@@ -134,6 +143,7 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     // Excluir explicitamente todas as rotas relacionadas à autenticação e recursos estáticos
-    '/((?!api\/auth|_next\/static|_next\/image|favicon\.ico|.*\.(?:svg|png|jpg|jpeg|gif|ico)).*)',
+    // Adicionar mais exclusões para garantir que todas as rotas de autenticação sejam ignoradas
+    '/((?!api\/auth|auth|callback|login|_next\/static|_next\/image|favicon\.ico|.*\.(?:svg|png|jpg|jpeg|gif|ico)).*)',
   ],
 }
