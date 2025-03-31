@@ -10,7 +10,7 @@ export function SessionProvider({
   session: any
 }) {
   return (
-    <NextAuthSessionProvider session={session}>
+    <NextAuthSessionProvider session={session} refetchInterval={0} refetchOnWindowFocus={false}>
       {children}
     </NextAuthSessionProvider>
   )

@@ -1,26 +1,27 @@
 "use client"
 
-import { useEffect } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { useSession, signIn } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 
 export default function LoginPage() {
-  const { data: session } = useSession()
+  const { data: session, status } = useSession()
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const callbackUrl = searchParams.get("callbackUrl") || "/"
-
+  const [isRedirecting, setIsRedirecting] = useState(false)
+  
+  // Simplificando a lógica de redirecionamento para evitar loops
   useEffect(() => {
-    if (session) {
-      router.push(callbackUrl)
+    if (status === "authenticated" && session && !isRedirecting) {
+      setIsRedirecting(true)
+      router.push("/")
     }
-  }, [session, router, callbackUrl])
+  }, [session, status, router, isRedirecting])
 
   const handleGoogleLogin = async () => {
     try {
       await signIn("google", {
-        callbackUrl,
+        callbackUrl: "/",
         redirect: true,
       })
     } catch (error) {

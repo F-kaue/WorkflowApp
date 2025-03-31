@@ -2,69 +2,56 @@ import { getToken } from "next-auth/jwt"
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 
-// Função para verificar se a rota deve ser ignorada pelo middleware
-function shouldIgnoreRoute(path: string): boolean {
-  return (
-    path.startsWith('/api/') || 
-    path.startsWith('/_next/') || 
-    path.includes('/api/auth/') ||
-    path.includes('/auth/signin') ||
-    path.includes('/auth/callback') ||
-    path.includes('/auth/error') ||
-    path.includes('/auth/signout') ||
-    path === '/favicon.ico' ||
-    path.endsWith('.svg') ||
-    path.endsWith('.png') ||
-    path.endsWith('.jpg') ||
-    path.endsWith('.jpeg') ||
-    path.endsWith('.gif') ||
-    path.endsWith('.ico') ||
-    path.includes('_buildManifest') ||
-    path.includes('_ssgManifest') ||
-    path.includes('accounts.google.com') ||
-    path.includes('CheckConnection')
-  )
+// Lista de rotas públicas que não requerem autenticação
+const publicRoutes = [
+  '/login',
+  '/api/auth',
+  '/_next',
+  '/favicon.ico',
+  '.svg',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.ico'
+]
+
+// Função simplificada para verificar se uma rota é pública
+function isPublicRoute(path: string): boolean {
+  return publicRoutes.some(route => path.startsWith(route) || path.includes(route) || path.endsWith(route))
 }
 
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname
   
-  // 1. Ignorar rotas específicas
-  if (shouldIgnoreRoute(path)) {
+  // Ignorar completamente rotas de API e recursos estáticos para evitar problemas
+  if (path.startsWith('/api/') || path.startsWith('/_next/') || path.includes('/api/auth/')) {
     return NextResponse.next()
   }
   
-  // 2. Simplificar a lógica para evitar loops de redirecionamento
+  // Verificar se é uma rota pública
+  if (isPublicRoute(path)) {
+    return NextResponse.next()
+  }
+  
+  // Para rotas protegidas, verificar token
   try {
-    // Verificar se é a página de login
-    if (path === '/login') {
-      const token = await getToken({
-        req: request,
-        secret: process.env.NEXTAUTH_SECRET
-      })
-      
-      // Se já estiver autenticado na página de login, redirecionar para home
-      if (token) {
-        return NextResponse.redirect(new URL('/', request.url))
-      }
-      
-      // Se não estiver autenticado, permitir acesso à página de login
-      return NextResponse.next()
-    }
-    
-    // 3. Para todas as outras rotas protegidas, verificar autenticação
     const token = await getToken({
       req: request,
       secret: process.env.NEXTAUTH_SECRET
     })
     
-    // Se não estiver autenticado, redirecionar para login sem parâmetros adicionais
-    // para evitar problemas com cookies e redirecionamentos
+    // Se não houver token e não for uma rota pública, redirecionar para login
     if (!token) {
-      return NextResponse.redirect(new URL('/login', request.url))
+      // Usar URL absoluta para evitar problemas com redirecionamentos relativos
+      const url = request.nextUrl.clone()
+      url.pathname = '/login'
+      url.search = ''
+      
+      return NextResponse.redirect(url)
     }
     
-    // Se estiver autenticado, permitir acesso
+    // Se houver token, permitir acesso
     return NextResponse.next()
   } catch (error) {
     console.error("Erro no middleware:", error)
@@ -73,10 +60,9 @@ export async function middleware(request: NextRequest) {
   }
 }
 
+// Simplificar o matcher para incluir apenas as rotas necessárias
 export const config = {
   matcher: [
-    '/',
-    '/login',
-    '/(dashboard|profile|settings|projects)/:path*', // Especifique suas rotas protegidas aqui
+    '/((?!api|_next/static|_next/image|favicon.ico).*)',
   ],
 }
