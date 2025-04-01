@@ -2,151 +2,101 @@ import { getToken } from "next-auth/jwt"
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 
-// Lista de rotas públicas que não requerem autenticação
-const publicRoutes = [
+// Rotas que SEMPRE devem ser públicas (incluindo assets)
+const publicPaths = [
   '/login',
   '/api/auth',
-  '/auth',
-  '/callback',
   '/_next',
   '/favicon.ico',
-  '.svg',
-  '.png',
-  '.jpg',
-  '.jpeg',
-  '.gif',
-  '.ico',
-  '.js',
-  '.css',
-  // Adicionar rotas específicas de autenticação do Google
-  '/api/auth/signin',
-  '/api/auth/callback',
-  '/api/auth/signout',
-  '/api/auth/session',
-  '/api/auth/csrf',
-  '/api/auth/providers',
-  // Adicionar rotas específicas para o Google OAuth
-  '/api/auth/callback/google',
-  '/api/auth/signin/google'
+  '/images',
+  '/fonts'
 ]
 
-// Função melhorada para verificar se uma rota é pública
-function isPublicRoute(path: string): boolean {
-  // Verificar explicitamente rotas de autenticação (verificação mais abrangente)
-  if (path.includes('/api/auth') || path.includes('/auth') || path.includes('/callback') || path === '/login' || path.includes('google')) {
-    console.log(`[Middleware] Rota de autenticação detectada como pública: ${path}`)
-    return true
-  }
-  
-  // Verificar outras rotas públicas
-  const isPublic = publicRoutes.some(route => path.startsWith(route) || path.includes(route) || path.endsWith(route))
-  
-  if (isPublic) {
-    console.log(`[Middleware] Rota pública detectada via lista: ${path}`)
-  }
-  
-  return isPublic
-}
+// Extensões de arquivo públicas
+const publicExtensions = [
+  '.svg', '.png', '.jpg', '.jpeg', 
+  '.gif', '.ico', '.js', '.css', '.woff2'
+]
 
 export async function middleware(request: NextRequest) {
-  const path = request.nextUrl.pathname
-  
-  console.log(`[Middleware] Processando rota: ${path}, URL completa: ${request.nextUrl.toString()}`)
-  
-  // Verificar se já estamos em um loop de redirecionamento
-  const redirectCount = request.headers.get('x-redirect-count') || '0'
-  const count = parseInt(redirectCount, 10)
-  
-  // Aumentar a tolerância para loops em produção
-  const maxRedirects = process.env.NODE_ENV === 'production' ? 3 : 2
-  
-  if (count > maxRedirects) {
-    console.log(`[Middleware] Detectado possível loop de redirecionamento (${count}), permitindo acesso`)
-    console.log(`[Middleware] Ambiente: ${process.env.NODE_ENV}, URL: ${request.nextUrl.toString()}`)
+  const { pathname } = request.nextUrl
+  const requestHeaders = new Headers(request.headers)
+
+  // Debug inicial
+  console.log(`\n[Middleware] Rota acessada: ${pathname}`)
+  console.log(`[Middleware] Método: ${request.method}`)
+  console.log(`[Middleware] Cookies: ${request.headers.get('cookie')?.length ? 'presentes' : 'ausentes'}`)
+
+  // 1. Verificação de arquivos estáticos e rotas públicas explícitas
+  if (
+    publicPaths.some(path => pathname.startsWith(path)) ||
+    publicExtensions.some(ext => pathname.endsWith(ext))
+  ) {
+    console.log(`[Middleware] Rota pública/estática permitida: ${pathname}`)
     return NextResponse.next()
   }
-  
-  // Ignorar completamente rotas de API e recursos estáticos para evitar problemas
-  if (path.startsWith('/api/') || path.startsWith('/_next/') || path.includes('.')) {
-    console.log(`[Middleware] Rota ignorada (API/estático): ${path}`)
+
+  // 2. Verificação especial para rotas de autenticação
+  if (pathname.startsWith('/api/auth/')) {
+    console.log(`[Middleware] Rota de autenticação permitida: ${pathname}`)
+    
+    // Garantir que headers necessários estejam presentes
+    requestHeaders.set('x-middleware-request', 'auth-route')
+    return NextResponse.next({ request: { headers: requestHeaders } })
+  }
+
+  // 3. Prevenção de loops
+  const redirectCount = parseInt(requestHeaders.get('x-redirect-count') || '0', 10)
+  if (redirectCount > 2) {
+    console.error('[Middleware] Loop detectado! Redirecionamentos:', redirectCount)
     return NextResponse.next()
   }
-  
-  // Verificar explicitamente todas as rotas relacionadas à autenticação
-  // Usar uma verificação mais abrangente para garantir que todas as rotas de autenticação sejam ignoradas
-  if (path.includes('/api/auth') || path.includes('/auth') || path.includes('/callback') || path === '/login' || path.includes('google')) {
-    console.log(`[Middleware] Rota de autenticação ignorada: ${path}`)
-    return NextResponse.next()
-  }
-  
-  // Verificar se é uma rota pública
-  if (isPublicRoute(path)) {
-    console.log(`[Middleware] Rota pública permitida: ${path}`)
-    return NextResponse.next()
-  }
-  
-  // Para rotas protegidas, verificar token
+
+  // 4. Verificação de autenticação para rotas protegidas
   try {
-    console.log(`[Middleware] Verificando token para rota protegida: ${path}, Ambiente: ${process.env.NODE_ENV}`)
-    
-    // Adicionar mais informações de debug para ajudar a diagnosticar problemas
-    console.log(`[Middleware] NEXTAUTH_URL: ${process.env.NEXTAUTH_URL || 'não definido'}`)
-    console.log(`[Middleware] Cookies presentes: ${request.headers.get('cookie') ? 'Sim' : 'Não'}`)
-    
     const token = await getToken({
       req: request,
-      secret: process.env.NEXTAUTH_SECRET
+      secret: process.env.NEXTAUTH_SECRET,
+      secureCookie: process.env.NODE_ENV === 'production'
     })
-    
-    console.log(`[Middleware] Token encontrado: ${!!token}`)
-    
-    // Se não houver token e não for uma rota pública, redirecionar para login
+
+    console.log(`[Middleware] Status de autenticação: ${token ? 'Autenticado' : 'Não autenticado'}`)
+
     if (!token) {
-      // Usar URL absoluta para evitar problemas com redirecionamentos relativos
-      const url = request.nextUrl.clone()
-      url.pathname = '/login'
-      url.search = ''
-      
-      // Verificar se já estamos na página de login para evitar loops
-      if (path === '/login') {
-        console.log(`[Middleware] Já estamos na página de login, permitindo acesso para evitar loop`)
+      if (pathname === '/login') {
+        console.log('[Middleware] Já na página de login, evitando loop')
         return NextResponse.next()
       }
+
+      console.log('[Middleware] Redirecionando para login')
+      const loginUrl = new URL('/login', request.url)
       
-      // Garantir que a URL seja absoluta em produção
-      if (process.env.NODE_ENV === 'production' && process.env.NEXTAUTH_URL) {
-        // Usar URL base configurada para garantir redirecionamentos corretos
-        const baseUrl = new URL(process.env.NEXTAUTH_URL)
-        url.host = baseUrl.host
-        url.protocol = baseUrl.protocol
-        url.port = baseUrl.port || ''
-      }
+      // Atualizar contador de redirecionamentos
+      requestHeaders.set('x-redirect-count', (redirectCount + 1).toString())
       
-      console.log(`[Middleware] Redirecionando para login: ${url.toString()}`)
-      const response = NextResponse.redirect(url)
-      
-      // Incrementar contador de redirecionamentos para detectar loops
-      response.headers.set('x-redirect-count', (count + 1).toString())
-      
-      return response
+      return NextResponse.redirect(loginUrl, {
+        headers: requestHeaders
+      })
     }
-    
-    // Se houver token, permitir acesso
-    console.log(`[Middleware] Acesso permitido para rota protegida: ${path}`)
+
+    // Usuário autenticado - permitir acesso
     return NextResponse.next()
+
   } catch (error) {
-    console.error("[Middleware] Erro:", error)
-    console.log(`[Middleware] Erro ao processar rota ${path} em ambiente ${process.env.NODE_ENV}`)
-    // Em caso de erro, permitir acesso para evitar loops
+    console.error('[Middleware] Erro na verificação:', error)
     return NextResponse.next()
   }
 }
 
-// Configuração mais precisa do matcher para evitar problemas com rotas de autenticação
 export const config = {
   matcher: [
-    // Excluir explicitamente todas as rotas relacionadas à autenticação e recursos estáticos
-    // Adicionar mais exclusões para garantir que todas as rotas de autenticação sejam ignoradas
-    '/((?!api\/auth|auth|callback|login|google|_next\/static|_next\/image|favicon\.ico|.*\.(?:svg|png|jpg|jpeg|gif|ico)).*)',
-  ],
+    /*
+     * Match all request paths except for:
+     * - API auth routes
+     * - static files
+     * - login page
+     * - _next internals
+     */
+    '/((?!api/auth|_next/static|_next/image|favicon.ico|login).*)'
+  ]
 }

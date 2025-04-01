@@ -1,20 +1,12 @@
 import { NextAuthOptions } from "next-auth"
 import GoogleProvider from "next-auth/providers/google"
 
-// Determina a URL base com base no ambiente
-// IMPORTANTE: Esta URL deve corresponder exatamente à URL configurada no Google Cloud Console
-// O erro redirect_uri_mismatch ocorre quando esta URL não corresponde à URL registrada no Google Cloud Console
-// A URL de redirecionamento deve corresponder exatamente à URL registrada no Google Cloud Console
-// Em desenvolvimento: http://localhost:3002/api/auth/callback/google
-// Em produção: https://workfloowapp.vercel.app/api/auth/callback/google
 const baseUrl = process.env.NEXTAUTH_URL || 
   (process.env.NODE_ENV === "production" 
-    ? "https://workfloowapp.vercel.app" 
+    ? "https://workfloowapp.vercel.app"  // URL corrigida (com três "o")
     : "http://localhost:3002")
 
 export const authOptions: NextAuthOptions = {
-  // Configuração explícita da URL base para redirecionamentos
-  useSecureCookies: process.env.NODE_ENV === "production",
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -24,68 +16,83 @@ export const authOptions: NextAuthOptions = {
           prompt: "select_account",
           access_type: "offline",
           response_type: "code",
-          // Configuração correta da URL de callback dentro dos parâmetros de autorização
-          redirect_uri: `${baseUrl}/api/auth/callback/google`
+          redirect_uri: `${baseUrl}/api/auth/callback/google`,
         },
       },
     }),
   ],
+
   secret: process.env.NEXTAUTH_SECRET,
+
   session: {
     strategy: "jwt",
-    maxAge: 24 * 60 * 60, // 24 horas em segundos
+    maxAge: 24 * 60 * 60, // 24 horas
   },
-  debug: process.env.NODE_ENV === "development",
+
+  debug: true, // Ativa logs detalhados do NextAuth
+
+  // Logs personalizados para depuração
+  logger: {
+    error(code, metadata) {
+      console.error("[NextAuth Error]", code, metadata)
+    },
+    warn(code) {
+      console.warn("[NextAuth Warning]", code)
+    },
+    debug(code, metadata) {
+      console.log("[NextAuth Debug]", code, metadata)
+    },
+  },
+
   callbacks: {
     async jwt({ token, account }) {
-      // Persist the OAuth access_token and refresh_token to the token
+      console.log("[JWT Callback] Token:", token)
       if (account) {
+        console.log("[JWT Callback] Account:", account)
         token.accessToken = account.access_token
       }
       return token
     },
+
     async session({ session, token }) {
-      // Send properties to the client
+      console.log("[Session Callback] Session:", session)
+      console.log("[Session Callback] Token:", token)
       if (session.user) {
         session.user.id = token.sub
       }
       return session
     },
-    async signIn({ user, account, profile, email, credentials }) {
-      // Permitir o login e garantir que o redirecionamento funcione
+
+    async redirect({ url, baseUrl }) {
+      console.log("[Redirect Callback] URL:", url)
+      console.log("[Redirect Callback] BaseURL:", baseUrl)
+      return url.startsWith("/") ? `${baseUrl}${url}` : url
+    },
+
+    async signIn({ user, account, profile }) {
+      console.log("[SignIn Callback] User:", user)
+      console.log("[SignIn Callback] Account:", account)
+      console.log("[SignIn Callback] Profile:", profile)
       return true
     },
-    async redirect({ url, baseUrl }) {
-      // Garantir que o redirecionamento após o login funcione corretamente
-      // Se a URL for relativa (começar com /), adicione a URL base
-      if (url.startsWith('/')) {
-        return `${baseUrl}${url}`
-      }
-      // Se a URL já for absoluta e pertencer ao mesmo site, permita
-      else if (url.startsWith(baseUrl)) {
-        return url
-      }
-      // Caso contrário, redirecione para a página inicial
-      return baseUrl
-    },
   },
+
   pages: {
     signIn: "/login",
-    error: "/login", // Página de erro personalizada
+    error: "/login",
   },
-  // Configuração otimizada de cookies para ambiente de produção no Vercel
+
   cookies: {
     sessionToken: {
-      name: `next-auth.session-token`,
+      name: `__Secure-next-auth.session-token`,
       options: {
         httpOnly: true,
-        sameSite: process.env.NODE_ENV === "production" ? "lax" : "lax",
+        sameSite: "lax",
         path: "/",
         secure: process.env.NODE_ENV === "production",
-        // Não definir domínio para permitir que o navegador use o domínio atual
-        domain: undefined,
-        // Reduzir o tempo de vida do cookie para evitar problemas de sessão
-        maxAge: 24 * 60 * 60, // 1 dia em segundos
+        domain: process.env.NODE_ENV === "production" 
+          ? ".workfloowapp.vercel.app" // Permite subdomínios
+          : undefined,
       },
     },
   },
