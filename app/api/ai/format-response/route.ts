@@ -1,142 +1,158 @@
 import { NextResponse } from 'next/server';
 
 type FormatRequestBody = {
-  response: string;
+  text: string;
+};
+
+type FormatResponse = {
+  formattedText: string;
+  errors?: string[];
 };
 
 export async function POST(request: Request) {
   try {
-    // Verificar se o corpo da requisição é válido
-    let body: FormatRequestBody;
-    try {
-      body = await request.json();
-    } catch (parseError) {
-      console.error('Erro ao fazer parsing do JSON da requisição:', parseError);
+    // Validação da requisição
+    if (!request.body) {
       return NextResponse.json(
-        { error: 'Formato de requisição inválido' },
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-    
-    const { response } = body;
-
-    if (!response) {
-      return NextResponse.json(
-        { error: 'Resposta não fornecida' },
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
+        { error: 'Request body is missing' },
+        { status: 400 }
       );
     }
 
-    // Formatar a resposta para ser mais organizada e explicativa
-    const formattedResponse = formatResponse(response);
+    const { text } = (await request.json()) as FormatRequestBody;
 
-    return NextResponse.json(
-      { response: formattedResponse },
-      { headers: { 'Content-Type': 'application/json' } }
-    );
+    if (!text || typeof text !== 'string') {
+      return NextResponse.json(
+        { error: 'Invalid or missing text parameter' },
+        { status: 400 }
+      );
+    }
+
+    // Processamento do texto
+    const result = formatText(text);
+
+    // Resposta de sucesso
+    return NextResponse.json({
+      formattedText: result.formattedText,
+      ...(result.errors && { warnings: result.errors })
+    });
+
   } catch (error) {
-    console.error('Erro ao formatar resposta:', error);
+    console.error('Error in text formatting:', error);
     return NextResponse.json(
-      { error: 'Erro ao processar a solicitação' },
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      { error: 'Internal server error during text processing' },
+      { status: 500 }
     );
   }
 }
 
-function formatResponse(text: string): string {
-  // Verificar se o texto é válido antes de processar
-  if (!text || typeof text !== 'string') {
-    return 'Não foi possível processar a resposta.';
-  }
-  
+function formatText(rawText: string): FormatResponse {
+  const errors: string[] = [];
+  let formattedText = rawText;
+
   try {
-    // Remover asteriscos desnecessários
-    let formatted = text.replace(/\*\*/g, '');
-    
-    // Normalizar quebras de linha para evitar problemas de formatação
-    formatted = formatted.replace(/\r\n/g, '\n');
-    
-    // Corrigir problemas de espaçamento entre palavras
-    // Adicionar espaço após pontuação se não houver
-    formatted = formatted.replace(/([.,:;!?])([A-Za-zÀ-ÿ])/g, '$1 $2');
-    
-    // Corrigir palavras coladas sem espaço
-    formatted = formatted.replace(/([a-záàâãéèêíïóôõöúçñ])([A-ZÁÀÂÃÉÈÊÍÏÓÔÕÖÚÇÑ])/g, '$1 $2');
-    
-    // Separar palavras coladas (sem espaço entre elas)
-    formatted = formatted.replace(/(\w)(Para|Emitir|Boleto|Clique|Acesse|Preencha|Selecione|Confirme|Certifique)/g, '$1 $2');
-    
-    // Corrigir problemas específicos de palavras coladas em instruções
-    formatted = formatted.replace(/([a-z])(emitir|boleto|sistema|siga|passos|abaixo|acesse|módulo|contas|receber|clique|botão|adicionar|novo|representado|pelo|símbolo|canto|inferior|direito|tela|preencha|todos|campos|necessários|como|valor|data|vencimento|descrição|certifique|selecionar|opção|emissão|gerar|massa|personalize|conforme|desejado|após|preencher|mensagem|aviso|surgirá|confirmar|está|ciente|sócios|prosseguir|com|esses|conseguirá|emitir|boletos|forma|eficiente)/gi, '$1 $2');
-    
-    // Corrigir problemas de palavras quebradas (como "jurí DICA")
-    formatted = formatted.replace(/([a-záàâãéèêíïóôõöúçñ])\s+([A-ZÁÀÂÃÉÈÊÍÏÓÔÕÖÚÇÑ]{2,})/gi, (match, p1, p2) => {
-      // Se a segunda parte for uma palavra de destaque conhecida, separe corretamente
-      if (/^(DICA|NOTA|IMPORTANTE|ATENÇÃO|LEMBRE)/i.test(p2)) {
-        return `${p1}\n\n${p2}`;
-      }
-      // Caso contrário, junte as partes
-      return `${p1}${p2.toLowerCase()}`;
-    });
-    
-    // Identificar se o texto já tem estrutura de tópicos
-    const hasBulletPoints = /^\d+\.\s|^-\s|^•\s/m.test(formatted);
-    
-    if (!hasBulletPoints) {
-      // Dividir em parágrafos
-      const paragraphs = formatted.split(/\n{2,}/);
-      
-      // Se tiver mais de 2 parágrafos, converter em tópicos
-      if (paragraphs.length > 2) {
-        formatted = paragraphs.map((para, index) => {
-          // Ignorar parágrafos muito curtos ou introdutórios
-          if (para.length < 30 || index === 0) {
-            return para;
-          }
-          return `${index}. ${para}`;
-        }).join('\n\n');
-      }
-    }
-    
-    // Formatar termos de destaque de maneira consistente
-    formatted = formatted.replace(/(?<!\w)(importante|atenção|nota|dica|lembre-se)(?!\w)[:]*\s*/gi, (match) => {
-      const term = match.replace(/[:]*\s*$/, '');
-      return `\n\n${term.toUpperCase()}:\n`;
-    });
-    
-    // Melhorar a formatação de listas de passos
-    formatted = formatted.replace(/(?:\n|^)(passo\s*\d+|etapa\s*\d+)(?::)/gi, (match) => {
-      return `\n\n${match.toUpperCase()}`;
-    });
-    
-    // Adicionar quebras de linha antes de novos tópicos para melhor legibilidade
-    formatted = formatted.replace(/(?:\n|^)(\d+\.\s)/g, '\n\n$1');
-    
-    // Garantir espaçamento adequado entre tópicos numerados
-    formatted = formatted.replace(/(\d+\.)\s*([A-Za-zÀ-ÿ])/g, '$1 $2');
-    
-    // Garantir que os números dos passos estejam bem formatados
-    formatted = formatted.replace(/(\d+)\.(\w)/g, '$1. $2');
-    
-    // Melhorar formatação de passos numerados
-    formatted = formatted.replace(/(\n|^)(\d+)\./g, '$1$2. ');
-    
-    // Garantir que não haja mais de duas quebras de linha consecutivas
-    formatted = formatted.replace(/\n{3,}/g, '\n\n');
-    
-    // Garantir que o texto comece sem quebras de linha
-    formatted = formatted.replace(/^\n+/, '');
-    
-    // Garantir espaçamento adequado após vírgulas
-    formatted = formatted.replace(/,([^\s])/g, ', $1');
-    
-    // Corrigir espaçamento em torno de parênteses
-    formatted = formatted.replace(/\s+\)/g, ')');
-    formatted = formatted.replace(/\(\s+/g, '(');
-    
-    return formatted;
+    // 1. Normalização básica do texto
+    formattedText = formattedText
+      .replace(/\s+/g, ' ') // Remove múltiplos espaços
+      .replace(/(\r\n|\n|\r)/gm, '\n') // Normaliza quebras de linha
+      .trim();
+
+    // 2. Correção de palavras coladas
+    formattedText = fixJoinedWords(formattedText);
+
+    // 3. Correção de termos específicos
+    formattedText = fixSpecificTerms(formattedText);
+
+    // 4. Formatação de listas e estrutura
+    formattedText = formatLists(formattedText);
+
+    // 5. Correção de pontuação
+    formattedText = fixPunctuation(formattedText);
+
+    // 6. Capitalização adequada
+    formattedText = properCapitalization(formattedText);
+
+    // 7. Limpeza final
+    formattedText = formattedText
+      .replace(/\n{3,}/g, '\n\n') // Máximo de 1 linha em branco
+      .replace(/(\S)\n(\S)/g, '$1\n\n$2') // Espaço entre parágrafos
+      .trim();
+
   } catch (error) {
-    console.error('Erro ao formatar texto:', error);
-    return 'Não foi possível processar a resposta corretamente.';
+    errors.push('Partial formatting applied due to processing error');
+    console.error('Error during text formatting:', error);
   }
+
+  return {
+    formattedText,
+    ...(errors.length > 0 && { errors })
+  };
+}
+
+// Funções auxiliares específicas
+function fixJoinedWords(text: string): string {
+  const commonPrefixes = ['um', 'no', 'do', 'da', 'os', 'as', 'para', 'com', 'em', 'de', 'a', 'o', 'e', 'se', 'na', 'ao', 'nos'];
+  const commonWords = ['boleto', 'sistema', 'siga', 'passos', 'acesse', 'módulo', 'clique', 'botão', 'campo', 'opção'];
+
+  let result = text;
+
+  // Padrão geral para palavras coladas
+  result = result.replace(/([a-záàâãéèêíïóôõöúçñ])([A-ZÁÀÂÃÉÈÊÍÏÓÔÕÖÚÇÑ][a-záàâãéèêíïóôõöúçñ]+)/g, '$1 $2');
+
+  // Correções específicas para prefixos comuns
+  commonPrefixes.forEach(prefix => {
+    commonWords.forEach(word => {
+      const regex = new RegExp(`\\b${prefix}${word}\\b`, 'gi');
+      result = result.replace(regex, `${prefix} ${word}`);
+    });
+  });
+
+  return result;
+}
+
+function fixSpecificTerms(text: string): string {
+  const termCorrections: Record<string, string> = {
+    'jurí DICA': 'jurídica',
+    'físi DICA': 'física',
+    'sigaestes': 'siga estes',
+    'cliqueno': 'clique no',
+    'botãode': 'botão de',
+    'adicionarnovo': 'adicionar novo',
+    'certifique-sede': 'certifique-se de',
+    'pessoa jurí': 'pessoa jurídica',
+    'pessoa Física': 'pessoa física',
+    'emitidosem massa': 'emitidos em massa'
+  };
+
+  let result = text;
+  for (const [wrong, correct] of Object.entries(termCorrections)) {
+    result = result.replace(new RegExp(wrong, 'gi'), correct);
+  }
+  return result;
+}
+
+function formatLists(text: string): string {
+  // Detecta se já tem estrutura de lista
+  const hasListFormat = /^\d+\.\s|\n\d+\.\s|^-\s|\n-\s/.test(text);
+
+  if (!hasListFormat) {
+    // Tenta criar estrutura de lista para passos sequenciais
+    return text.replace(/(?:\n|^)(Passo \d+|Etapa \d+|[1-9]\.?\)?)(?::)?\s*/gi, '\n$1. ');
+  }
+  return text;
+}
+
+function fixPunctuation(text: string): string {
+  return text
+    .replace(/([.,:;!?])([A-Za-zÀ-ÿ])/g, '$1 $2') // Espaço após pontuação
+    .replace(/(\w)([.!?])(\w)/g, '$1$2 $3') // Espaço após final de frase
+    .replace(/,(\S)/g, ', $1') // Espaço após vírgula
+    .replace(/\s+\)/g, ')') // Remove espaço antes de )
+    .replace(/\(\s+/g, '('); // Remove espaço depois de (
+}
+
+function properCapitalization(text: string): string {
+  return text.replace(/(^|[.!?]\s+)([a-záàâãéèêíïóôõöúçñ])/g, (match, p1, p2) => {
+    return p1 + p2.toUpperCase();
+  });
 }
