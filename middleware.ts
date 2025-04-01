@@ -1,102 +1,118 @@
-import { getToken } from "next-auth/jwt"
-import { NextResponse } from "next/server"
-import type { NextRequest } from "next/server"
+// src/middleware.ts
+import { getToken } from "next-auth/jwt";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
-// Rotas que SEMPRE devem ser públicas (incluindo assets)
-const publicPaths = [
-  '/login',
-  '/api/auth',
-  '/_next',
-  '/favicon.ico',
-  '/images',
-  '/fonts'
-]
+// Definição de rotas públicas
+const publicRoutes = [
+  "/",
+  "/login",
+  "/auth/signin",
+  "/auth/signout",
+  "/auth/error",
+  "/auth/verify-request",
+  "/auth/new-user",
+  "/api/auth",
+  "/api/auth/callback/google",
+  "/api/",
+  "/_next",
+  "/favicon.ico",
+];
 
-// Extensões de arquivo públicas
+// Extensões de arquivos públicos (recursos estáticos)
 const publicExtensions = [
-  '.svg', '.png', '.jpg', '.jpeg', 
-  '.gif', '.ico', '.js', '.css', '.woff2'
-]
+  ".svg",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".ico",
+  ".js",
+  ".css",
+  ".woff2",
+];
 
 export async function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl
-  const requestHeaders = new Headers(request.headers)
+  const { pathname } = request.nextUrl;
+  const requestHeaders = new Headers(request.headers);
 
-  // Debug inicial
-  console.log(`\n[Middleware] Rota acessada: ${pathname}`)
-  console.log(`[Middleware] Método: ${request.method}`)
-  console.log(`[Middleware] Cookies: ${request.headers.get('cookie')?.length ? 'presentes' : 'ausentes'}`)
-
-  // 1. Verificação de arquivos estáticos e rotas públicas explícitas
+  // Se a rota for pública ou um recurso estático, permite a requisição
   if (
-    publicPaths.some(path => pathname.startsWith(path)) ||
-    publicExtensions.some(ext => pathname.endsWith(ext))
+    publicRoutes.some((route) => pathname.startsWith(route)) ||
+    publicExtensions.some((ext) => pathname.endsWith(ext)) ||
+    pathname.startsWith("/api/auth/") || // Permitir todas as rotas de autenticação da API
+    pathname.startsWith("/api/") || // Permitir todas as rotas de API
+    pathname.includes("/_next/") ||
+    pathname.includes("/static/") ||
+    pathname.includes("/favicon.ico")
   ) {
-    console.log(`[Middleware] Rota pública/estática permitida: ${pathname}`)
-    return NextResponse.next()
+    return NextResponse.next();
   }
 
-  // 2. Verificação especial para rotas de autenticação
-  if (pathname.startsWith('/api/auth/')) {
-    console.log(`[Middleware] Rota de autenticação permitida: ${pathname}`)
-    
-    // Garantir que headers necessários estejam presentes
-    requestHeaders.set('x-middleware-request', 'auth-route')
-    return NextResponse.next({ request: { headers: requestHeaders } })
+  // Verificar a presença do cookie de sessão para evitar chamadas desnecessárias ao getToken
+  const sessionCookie = request.cookies.get(
+    process.env.NODE_ENV === "production"
+      ? "__Secure-next-auth.session-token"
+      : "next-auth.session-token"
+  );
+
+  if (!sessionCookie) {
+    return redirectToLogin(request);
   }
 
-  // 3. Prevenção de loops
-  const redirectCount = parseInt(requestHeaders.get('x-redirect-count') || '0', 10)
-  if (redirectCount > 2) {
-    console.error('[Middleware] Loop detectado! Redirecionamentos:', redirectCount)
-    return NextResponse.next()
-  }
-
-  // 4. Verificação de autenticação para rotas protegidas
   try {
+    // Obtém o token JWT para verificar autenticação
     const token = await getToken({
       req: request,
       secret: process.env.NEXTAUTH_SECRET,
-      secureCookie: process.env.NODE_ENV === 'production'
-    })
+      cookieName:
+        process.env.NODE_ENV === "production"
+          ? "__Secure-next-auth.session-token"
+          : "next-auth.session-token",
+    });
 
-    console.log(`[Middleware] Status de autenticação: ${token ? 'Autenticado' : 'Não autenticado'}`)
-
+    // Se não há token válido, redirecionar para login
     if (!token) {
-      if (pathname === '/login') {
-        console.log('[Middleware] Já na página de login, evitando loop')
-        return NextResponse.next()
-      }
-
-      console.log('[Middleware] Redirecionando para login')
-      const loginUrl = new URL('/login', request.url)
-      
-      // Atualizar contador de redirecionamentos
-      requestHeaders.set('x-redirect-count', (redirectCount + 1).toString())
-      
-      return NextResponse.redirect(loginUrl, {
-        headers: requestHeaders
-      })
+      return redirectToLogin(request);
     }
 
-    // Usuário autenticado - permitir acesso
-    return NextResponse.next()
+    // Se autenticado e tentando acessar login/signin, redireciona para home
+    if (pathname === "/login" || pathname.startsWith("/auth/signin")) {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
 
+    // Adiciona informações do usuário nos headers
+    requestHeaders.set("x-user-id", token.sub || "");
+    requestHeaders.set("x-user-email", token.email || "");
+
+    return NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+    });
   } catch (error) {
-    console.error('[Middleware] Erro na verificação:', error)
-    return NextResponse.next()
+    console.error("Erro no middleware:", error);
+    return redirectToError(request);
   }
 }
 
+// Função auxiliar para redirecionar ao login com callbackUrl
+function redirectToLogin(request: NextRequest) {
+  const loginUrl = new URL("/login", request.url);
+  loginUrl.searchParams.set("callbackUrl", encodeURIComponent(request.url));
+  return NextResponse.redirect(loginUrl);
+}
+
+// Função auxiliar para redirecionar à página de erro
+function redirectToError(request: NextRequest) {
+  const errorUrl = new URL("/auth/error", request.url);
+  errorUrl.searchParams.set("error", "MiddlewareError");
+  return NextResponse.redirect(errorUrl);
+}
+
+// Configuração do matcher para aplicar o middleware corretamente
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for:
-     * - API auth routes
-     * - static files
-     * - login page
-     * - _next internals
-     */
-    '/((?!api/auth|_next/static|_next/image|favicon.ico|login).*)'
-  ]
-}
+    "/((?!api/auth/|api/|_next/|static/|favicon.ico).*)",
+  ],
+};

@@ -1,9 +1,18 @@
 import { NextResponse } from "next/server"
-import { excluirTreinamento } from "@/lib/firestore"
+import { adminDb } from "@/lib/firebase-admin"
 
 // Implementação simplificada sem uso de params
 export async function DELETE(request: Request) {
   try {
+    // Verificar se adminDb está disponível
+    if (!adminDb) {
+      console.error("Erro ao excluir treinamento: Firebase Admin não inicializado")
+      return NextResponse.json(
+        { error: "Serviço de banco de dados não está disponível no momento" },
+        { status: 503 }
+      )
+    }
+
     // Extrair o ID da URL
     const url = new URL(request.url)
     const pathSegments = url.pathname.split('/')
@@ -16,7 +25,10 @@ export async function DELETE(request: Request) {
       );
     }
 
-    await excluirTreinamento(id)
+    // Excluir o treinamento diretamente usando adminDb
+    const treinamentoRef = adminDb.collection("treinamentos").doc(id)
+    await treinamentoRef.delete()
+    
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Erro ao excluir treinamento:", error)

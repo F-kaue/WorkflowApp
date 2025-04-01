@@ -5,11 +5,13 @@ export async function GET() {
   try {
     // Verificar se adminDb está disponível
     if (!adminDb) {
+      console.error("Erro ao carregar tickets: Firebase Admin não inicializado")
       return NextResponse.json(
         { error: "Serviço de banco de dados não está disponível no momento" },
         { status: 503 }
       )
     }
+    console.log("[API Tickets] Iniciando busca de tickets")
     const ticketsRef = adminDb.collection("tickets")
     const snapshot = await ticketsRef.orderBy("dataCriacao", "desc").get()
     
