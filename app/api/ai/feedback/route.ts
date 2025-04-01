@@ -19,31 +19,52 @@ export async function POST(request: Request) {
 
     const { messageId, rating, comment } = body;
 
-    if (!messageId || rating === undefined) {
+    // Validação mais robusta dos dados recebidos
+    if (!messageId) {
+      console.log("messageId não fornecido");
       return NextResponse.json(
-        { error: "Dados de feedback incompletos" },
+        { error: "ID da mensagem não fornecido" },
+        { status: 400 }
+      );
+    }
+    
+    if (rating === undefined || rating === null) {
+      console.log("rating não fornecido");
+      return NextResponse.json(
+        { error: "Avaliação não fornecida" },
         { status: 400 }
       );
     }
 
     // Salvar feedback no Firestore com informações para aprendizado da IA
     try {
+      // Garantir que rating seja um número
+      const ratingNumber = Number(rating);
+      
+      if (isNaN(ratingNumber)) {
+        console.error("Rating não é um número válido:", rating);
+        return NextResponse.json(
+          { error: "Formato de avaliação inválido" },
+          { status: 400 }
+        );
+      }
+      
       const feedbackData = {
         messageId,
-        rating,
+        rating: ratingNumber,
         comment: comment || "",
         userId: session?.user?.id || "anonymous",
         userName: session?.user?.name || "Usuário Anônimo",
         userEmail: session?.user?.email || "anônimo",
         timestamp: Timestamp.now(),
         // Campos adicionais para aprendizado da IA
-        isPositive: rating >= 3,
-        learnPattern: rating >= 4, // Aprender com respostas muito bem avaliadas
-        needsImprovement: rating < 3, // Identificar padrões que precisam melhorar
+        isPositive: ratingNumber >= 3,
+        learnPattern: ratingNumber >= 4, // Aprender com respostas muito bem avaliadas
+        needsImprovement: ratingNumber < 3, // Identificar padrões que precisam melhorar
         improvementSuggestion: comment || ""
       };
 
-      console.log("Salvando feedback no Firestore...");
+      console.log("Salvando feedback no Firestore...", feedbackData);
       
       // Verificar se o adminDb está inicializado
       if (!adminDb) {
