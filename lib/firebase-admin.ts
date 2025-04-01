@@ -17,9 +17,21 @@ function initializeFirebaseAdmin() {
     }
 
     // Configuração do Firebase Admin
-    const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n")
-    if (!privateKey) {
+    // Tratamento especial para a chave privada, considerando diferentes formatos possíveis
+    let privateKey = process.env.FIREBASE_PRIVATE_KEY || ''
+    
+    // Verificar se a chave já está no formato correto ou precisa de processamento
+    if (privateKey.includes('\\n')) {
+      // Substituir \n por quebras de linha reais
+      privateKey = privateKey.replace(/\\n/g, '\n')
+    } else if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
+      // Remover aspas extras que podem ter sido adicionadas pelo Vercel
+      privateKey = privateKey.slice(1, -1).replace(/\\n/g, '\n')
+    }
+    
+    if (!privateKey || !privateKey.includes('BEGIN PRIVATE KEY')) {
       console.error('Erro crítico: FIREBASE_PRIVATE_KEY inválida ou mal formatada.')
+      console.error('Formato atual da chave:', privateKey ? `${privateKey.substring(0, 20)}...` : 'undefined')
       return false
     }
 
