@@ -32,7 +32,7 @@ async function verificarFirebase() {
     if (appsInicializados) {
       try {
         const db = admin.firestore();
-        const testDoc = await db.collection("_diagnostico").doc("teste").set({
+        await db.collection("_diagnostico").doc("teste").set({
           timestamp: admin.firestore.FieldValue.serverTimestamp(),
           ambiente: process.env.NODE_ENV || "desconhecido"
         });
