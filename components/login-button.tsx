@@ -13,8 +13,12 @@ export function LoginButton() {
       setIsLoading(true)
       setError("")
       // Usar configuração específica para evitar o erro redirect_uri_mismatch
-      // Não definimos a URL de callback aqui, deixando o NextAuth usar a configurada em auth-options.ts
-      await signIn("google", { redirect: true })
+      // Definir explicitamente a URL de callback para garantir o redirecionamento correto
+      const baseUrl = window.location.origin
+      await signIn("google", { 
+        redirect: true,
+        callbackUrl: baseUrl + "/"
+      })
     } catch (error) {
       console.error("Erro ao fazer login:", error)
       setError("Falha ao fazer login. Por favor, tente novamente.")

@@ -24,13 +24,16 @@ const publicRoutes = [
   '/api/auth/signout',
   '/api/auth/session',
   '/api/auth/csrf',
-  '/api/auth/providers'
+  '/api/auth/providers',
+  // Adicionar rotas específicas para o Google OAuth
+  '/api/auth/callback/google',
+  '/api/auth/signin/google'
 ]
 
 // Função melhorada para verificar se uma rota é pública
 function isPublicRoute(path: string): boolean {
   // Verificar explicitamente rotas de autenticação (verificação mais abrangente)
-  if (path.includes('/api/auth') || path.includes('/auth') || path.includes('/callback') || path === '/login') {
+  if (path.includes('/api/auth') || path.includes('/auth') || path.includes('/callback') || path === '/login' || path.includes('google')) {
     console.log(`[Middleware] Rota de autenticação detectada como pública: ${path}`)
     return true
   }
@@ -71,7 +74,7 @@ export async function middleware(request: NextRequest) {
   
   // Verificar explicitamente todas as rotas relacionadas à autenticação
   // Usar uma verificação mais abrangente para garantir que todas as rotas de autenticação sejam ignoradas
-  if (path.includes('/api/auth') || path.includes('/auth') || path.includes('/callback') || path === '/login') {
+  if (path.includes('/api/auth') || path.includes('/auth') || path.includes('/callback') || path === '/login' || path.includes('google')) {
     console.log(`[Middleware] Rota de autenticação ignorada: ${path}`)
     return NextResponse.next()
   }
@@ -144,6 +147,6 @@ export const config = {
   matcher: [
     // Excluir explicitamente todas as rotas relacionadas à autenticação e recursos estáticos
     // Adicionar mais exclusões para garantir que todas as rotas de autenticação sejam ignoradas
-    '/((?!api\/auth|auth|callback|login|_next\/static|_next\/image|favicon\.ico|.*\.(?:svg|png|jpg|jpeg|gif|ico)).*)',
+    '/((?!api\/auth|auth|callback|login|google|_next\/static|_next\/image|favicon\.ico|.*\.(?:svg|png|jpg|jpeg|gif|ico)).*)',
   ],
 }

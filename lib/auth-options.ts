@@ -33,6 +33,7 @@ export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
   session: {
     strategy: "jwt",
+    maxAge: 24 * 60 * 60, // 24 horas em segundos
   },
   debug: process.env.NODE_ENV === "development",
   callbacks: {
@@ -78,13 +79,13 @@ export const authOptions: NextAuthOptions = {
       name: `next-auth.session-token`,
       options: {
         httpOnly: true,
-        sameSite: "lax",
+        sameSite: process.env.NODE_ENV === "production" ? "lax" : "lax",
         path: "/",
         secure: process.env.NODE_ENV === "production",
         // Não definir domínio para permitir que o navegador use o domínio atual
         domain: undefined,
         // Reduzir o tempo de vida do cookie para evitar problemas de sessão
-        maxAge: 7 * 24 * 60 * 60, // 7 dias em segundos
+        maxAge: 24 * 60 * 60, // 1 dia em segundos
       },
     },
   },
