@@ -1,275 +1,190 @@
-import { NextResponse } from "next/server"
-import OpenAI from "openai"
+import { NextResponse } from "next/server";
+import OpenAI from "openai";
 
-// Configuração de timeout para o Vercel (máximo 30 segundos no plano Hobby)
-export const maxDuration = 30
+// Configurações importantes para o Vercel
+export const maxDuration = 30; // Máximo permitido no plano Hobby
+export const dynamic = 'force-dynamic'; // Garante que a rota seja tratada como dinâmica
 
-// Tipo para os detalhes de erro com tratamento explícito de null
-type ErrorDetails = {
-  type: string
-  timestamp: string
-  status?: number
-  code?: string | null
-  request_id?: string | null
-  headers?: Record<string, string> | null
-  stack?: string
-  finish_reason?: string
-}
+// Configuração do cliente OpenAI com timeout
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+  timeout: 20000, // Timeout de 20 segundos para a API
+  maxRetries: 1,  // Apenas 1 tentativa para evitar demoras
+});
 
 export async function POST(request: Request) {
-  // Log de início do processo
-  console.log("[generate-ticket] Iniciando processamento da requisição")
-
-  // Verificação da API Key da OpenAI
-  if (!process.env.OPENAI_API_KEY) {
-    console.error("[generate-ticket] Erro: OPENAI_API_KEY não está configurada")
-    return NextResponse.json(
-      { 
-        success: false,
-        error: "Configuração do serviço de IA incompleta",
-        details: {
-          type: "missing_api_key",
-          timestamp: new Date().toISOString()
-        }
-      },
-      { status: 500 }
-    )
-  }
+  // Headers padrão para todas as respostas
+  const headers = {
+    'Content-Type': 'application/json',
+  };
 
   try {
-    // Parse e validação do corpo da requisição
-    let sindicato: string, solicitacaoOriginal: string
-    try {
-      const requestBody = await request.json()
-      sindicato = requestBody.sindicato as string
-      solicitacaoOriginal = requestBody.solicitacaoOriginal as string
+    console.log("[generate-ticket] Iniciando processamento da requisição");
 
-      if (!sindicato || !solicitacaoOriginal) {
-        console.error("[generate-ticket] Dados incompletos na requisição:", { 
-          sindicato: sindicato || 'não fornecido',
-          solicitacaoOriginal: solicitacaoOriginal ? 'fornecido' : 'não fornecido'
-        })
-        return NextResponse.json(
-          { 
-            success: false,
-            error: "Dados incompletos",
-            details: {
-              type: "incomplete_data",
-              timestamp: new Date().toISOString()
-            }
-          },
-          { status: 400 }
-        )
-      }
-    } catch (parseError) {
-      console.error("[generate-ticket] Erro ao parsear o corpo da requisição:", parseError)
+    // Verificação da API Key
+    if (!process.env.OPENAI_API_KEY) {
+      console.error("[generate-ticket] Erro: OPENAI_API_KEY não configurada");
       return NextResponse.json(
         { 
           success: false,
-          error: "Formato de requisição inválido",
+          error: "Configuração do serviço de IA incompleta",
           details: {
-            type: "invalid_json",
+            type: "missing_api_key",
             timestamp: new Date().toISOString()
           }
         },
-        { status: 400 }
-      )
+        { status: 500, headers }
+      );
     }
 
-    // Log dos dados recebidos
+    // Validação do corpo da requisição
+    let sindicato: string, solicitacaoOriginal: string;
+    try {
+      const requestBody = await request.json();
+      sindicato = requestBody.sindicato as string;
+      solicitacaoOriginal = requestBody.solicitacaoOriginal as string;
+
+      if (!sindicato || !solicitacaoOriginal) {
+        console.error("[generate-ticket] Dados incompletos na requisição");
+        return NextResponse.json(
+          { 
+            success: false,
+            error: "Dados incompletos - sindicato e solicitacaoOriginal são obrigatórios"
+          },
+          { status: 400, headers }
+        );
+      }
+    } catch (parseError) {
+      console.error("[generate-ticket] Erro ao parsear o corpo da requisição:", parseError);
+      return NextResponse.json(
+        { 
+          success: false,
+          error: "Formato de requisição inválido"
+        },
+        { status: 400, headers }
+      );
+    }
+
     console.log("[generate-ticket] Dados recebidos:", {
       sindicato,
       solicitacaoOriginalLength: solicitacaoOriginal.length
-    })
+    });
 
-    // Inicialização do cliente OpenAI
-    const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-      timeout: 25000,
-      maxRetries: 2,
-    })
+    // Construção do prompt otimizado
+    const prompt = `Você é um especialista em gerenciamento de projetos para sindicatos. 
 
-    // Construção do prompt detalhado
-    const prompt = `Você é um especialista em gerenciamento de projetos para sindicatos. Com base na solicitação abaixo, gere um ticket detalhado seguindo rigorosamente este formato:
+# Solicitação:
+- Sindicato: ${sindicato}
+- Descrição: ${solicitacaoOriginal}
 
-# ${sindicato} - [TÍTULO DO PROJETO]
+# Formato do Ticket:
+1. Título claro do projeto
+2. Descrição detalhada (contexto, necessidades, objetivos)
+3. 3+ tarefas específicas com:
+   - Descrição
+   - Passos de execução
+   - Critérios de aceitação
+   - Responsável (Denilson para dev, Walter para banco de dados)
+4. Prazos realistas (início, conclusão, marcos)
+5. Prioridade justificada
+6. Requisitos técnicos
+7. Observações importantes`;
 
-## Descrição do Projeto
-[Descreva claramente o contexto, necessidades e objetivos. Seja detalhado mas conciso.]
+    console.log("[generate-ticket] Prompt construído. Tamanho:", prompt.length);
 
-## Visão Geral do Problema
-[Explique o problema principal, seu impacto e importância para o sindicato]
+    // Controle de timeout manual
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25000); // 25s timeout
 
-## Tarefas (Mínimo 3)
-
-### Tarefa 1: [NOME DA TAREFA]
-- **Descrição**: [Detalhe o que precisa ser feito]
-- **Passos**: [Liste as ações específicas]
-- **Critérios de Aceitação**: [Como saberemos que está completo]
-- **Responsável**: [Denilson para desenvolvimento/Walter para banco de dados]
-
-### Tarefa 2: [NOME DA TAREFA]
-- **Descrição**: [Detalhe o que precisa ser feito]
-- **Passos**: [Liste as ações específicas]
-- **Critérios de Aceitação**: [Como saberemos que está completo]
-- **Responsável**: [Denilson para desenvolvimento/Walter para banco de dados]
-
-### Tarefa 3: [NOME DA TAREFA]
-- **Descrição**: [Detalhe o que precisa ser feito]
-- **Passos**: [Liste as ações específicas]
-- **Critérios de Aceitação**: [Como saberemos que está completo]
-- **Responsável**: [Denilson para desenvolvimento/Walter para banco de dados]
-
-## Prazos
-- **Início**: [Data sugerida no formato DD/MM/AAAA]
-- **Conclusão**: [Data estimada no formato DD/MM/AAAA]
-- **Marcos**: [Entregas parciais importantes com datas]
-
-## Prioridade
-[Alta/Média/Baixa] - [Justifique com base no impacto para o sindicato]
-
-## Requisitos Técnicos
-[Ferramentas, sistemas e integrações necessárias]
-
-## Observações
-[Riscos, dependências ou informações adicionais]
-
-Solicitação original:
-${solicitacaoOriginal}`
-
-    console.log("[generate-ticket] Prompt construído. Tamanho:", prompt.length)
-
-    // Chamada à API OpenAI
-    let completion
     try {
-      console.log("[generate-ticket] Chamando API OpenAI...")
-      completion = await openai.chat.completions.create({
+      console.log("[generate-ticket] Chamando API OpenAI...");
+      const completion = await openai.chat.completions.create({
         model: "gpt-4-turbo-preview",
         messages: [
           {
             role: "system",
-            content: `Você é um assistente especializado em criar tickets técnicos para sindicatos. Siga estas regras rigorosamente:
-1. Analise profundamente a solicitação para extrair todos os detalhes relevantes
-2. Crie um título claro e descritivo que resuma o projeto
-3. Divida em pelo menos 3 tarefas específicas e acionáveis
-4. Atribua responsáveis conforme:
-   - Denilson: Desenvolvimento de software, interfaces, correção de bugs
-   - Walter: Banco de dados, SQL, migrações, exclusão em massa
-5. Defina prazos realistas considerando a complexidade
-6. Justifique a prioridade baseada no impacto operacional
-7. Seja extremamente organizado e detalhado em cada seção
-8. Mantenha linguagem técnica porém acessível
-9. Inclua todos os requisitos técnicos necessários
-10. Destaque riscos e dependências importantes`
+            content: `Você é um assistente especializado em criar tickets técnicos para sindicatos. Seja conciso e objetivo.`
           },
-          {
-            role: "user",
-            content: prompt
-          }
+          { role: "user", content: prompt }
         ],
         temperature: 0.7,
-        max_tokens: 2000,
-      })
-      console.log("[generate-ticket] Resposta da OpenAI recebida. Status:", completion?.choices?.[0]?.finish_reason)
-    } catch (apiError) {
-      console.error("[generate-ticket] Erro na chamada à API OpenAI:", apiError)
-      throw apiError
-    }
+        max_tokens: 1500, // Reduzido para melhor performance
+      }, { signal: controller.signal });
 
-    // Validação da resposta da OpenAI
-    const content = completion?.choices?.[0]?.message?.content
-    if (!content) {
-      console.error("[generate-ticket] Resposta inesperada da OpenAI:", completion)
+      clearTimeout(timeout);
+
+      const content = completion.choices[0]?.message?.content;
+      if (!content) {
+        console.error("[generate-ticket] Resposta vazia da OpenAI");
+        return NextResponse.json(
+          { 
+            success: false,
+            error: "Resposta inesperada do serviço de IA"
+          },
+          { status: 502, headers } // 502 Bad Gateway
+        );
+      }
+
+      console.log("[generate-ticket] Ticket gerado com sucesso");
       return NextResponse.json(
         { 
-          success: false,
-          error: "Resposta inesperada do serviço de IA",
-          details: {
-            type: "empty_response",
-            timestamp: new Date().toISOString(),
-            finish_reason: completion?.choices?.[0]?.finish_reason || 'unknown'
+          success: true,
+          ticket: content,
+          metadata: {
+            model: completion.model,
+            tokens_used: completion.usage?.total_tokens,
+            created: new Date((completion.created || 0) * 1000).toISOString()
           }
         },
-        { status: 500 }
-      )
-    }
+        { headers }
+      );
 
-    console.log("[generate-ticket] Ticket gerado com sucesso. Tamanho:", content.length)
+    } catch (error) {
+      clearTimeout(timeout);
+      console.error("[generate-ticket] Erro na chamada à API OpenAI:", error);
 
-    // Resposta de sucesso
-    return NextResponse.json({ 
-      success: true,
-      ticket: content,
-      metadata: {
-        model: completion.model,
-        tokens_used: completion.usage?.total_tokens || 0,
-        created: new Date((completion.created || 0) * 1000).toISOString()
+      if (error instanceof OpenAI.APIError) {
+        return NextResponse.json(
+          { 
+            success: false,
+            error: `Erro na API OpenAI: ${error.message}`,
+            details: {
+              type: "openai_api_error",
+              status: error.status,
+              code: error.code,
+              request_id: error.request_id,
+              timestamp: new Date().toISOString()
+            }
+          },
+          { status: 502, headers } // 502 Bad Gateway
+        );
+      } else if (error instanceof Error && error.name === 'AbortError') {
+        return NextResponse.json(
+          { 
+            success: false,
+            error: "Tempo limite excedido ao gerar o ticket"
+          },
+          { status: 504, headers } // 504 Gateway Timeout
+        );
       }
-    })
 
-  } catch (error: unknown) {
-    // Tratamento de erros completo
-    console.error("[generate-ticket] Erro durante o processamento:", error)
-
-    const errorDetails: ErrorDetails = {
-      type: "unknown_error",
-      timestamp: new Date().toISOString()
-    }
-
-    if (error instanceof OpenAI.APIError) {
-      errorDetails.type = "openai_api_error"
-      errorDetails.status = error.status || undefined
-      errorDetails.code = error.code || null
-      errorDetails.request_id = error.request_id || null
-      
-      if (process.env.NODE_ENV === 'development') {
-        errorDetails.headers = error.headers || null
-      }
-      
       return NextResponse.json(
         { 
           success: false,
-          error: `Erro no serviço de IA: ${error.message}`,
-          details: errorDetails
+          error: "Erro interno ao processar a solicitação"
         },
-        { status: error.status || 500 }
-      )
+        { status: 500, headers }
+      );
     }
 
-    if (error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')) {
-      errorDetails.type = "timeout_error"
-      return NextResponse.json(
-        { 
-          success: false,
-          error: "Tempo limite excedido ao processar a requisição",
-          details: errorDetails
-        },
-        { status: 504 }
-      )
-    }
-
-    if (error instanceof Error) {
-      errorDetails.type = "application_error"
-      if (process.env.NODE_ENV === 'development') {
-        errorDetails.stack = error.stack || undefined
-      }
-      return NextResponse.json(
-        { 
-          success: false,
-          error: error.message,
-          details: errorDetails
-        },
-        { status: 500 }
-      )
-    }
-
+  } catch (error) {
+    console.error("[generate-ticket] Erro durante o processamento:", error);
     return NextResponse.json(
       { 
         success: false,
-        error: "Erro desconhecido ao gerar ticket",
-        details: errorDetails
+        error: "Erro interno ao processar a solicitação"
       },
-      { status: 500 }
-    )
+      { status: 500, headers }
+    );
   }
 }
