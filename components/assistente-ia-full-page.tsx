@@ -190,9 +190,9 @@ export function AssistenteIAFullPage() {
     if (rating < 3) {
       setFeedbackMessage(message)
     } else {
-      // Enviar feedback para a API
+      // Enviar feedback para a API com melhor tratamento de erros
       try {
-        await fetch("/api/ai/feedback", {
+        const response = await fetch("/api/ai/feedback", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -203,13 +203,25 @@ export function AssistenteIAFullPage() {
             comment: ""
           }),
         })
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ error: "Erro desconhecido" }));
+          throw new Error(errorData.error || `Erro ${response.status}: Falha ao enviar feedback`);
+        }
+        
+        const data = await response.json();
 
         toast({
           title: "Feedback enviado",
-          description: "Obrigado pelo seu feedback!",
+          description: data.message || "Obrigado pelo seu feedback!",
         })
       } catch (error) {
         console.error("Erro ao enviar feedback:", error)
+        toast({
+          title: "Erro ao enviar feedback",
+          description: error instanceof Error ? error.message : "Tente novamente mais tarde",
+          variant: "destructive",
+        })
       }
     }
   }, [toast])
@@ -232,9 +244,9 @@ export function AssistenteIAFullPage() {
       )
     )
 
-    // Enviar feedback para a API
+    // Enviar feedback para a API com melhor tratamento de erros
     try {
-      await fetch("/api/ai/feedback", {
+      const response = await fetch("/api/ai/feedback", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -245,10 +257,17 @@ export function AssistenteIAFullPage() {
           comment: feedbackComment
         }),
       })
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Erro desconhecido" }));
+        throw new Error(errorData.error || `Erro ${response.status}: Falha ao enviar feedback detalhado`);
+      }
+      
+      const data = await response.json();
 
       toast({
         title: "Feedback enviado",
-        description: "Obrigado pelo seu feedback detalhado!",
+        description: data.message || "Obrigado pelo seu feedback detalhado!",
       })
 
       // Limpar o estado de feedback
@@ -256,6 +275,11 @@ export function AssistenteIAFullPage() {
       setFeedbackComment("")
     } catch (error) {
       console.error("Erro ao enviar feedback detalhado:", error)
+      toast({
+        title: "Erro ao enviar feedback",
+        description: error instanceof Error ? error.message : "Tente novamente mais tarde",
+        variant: "destructive",
+      })
     }
   }
 
@@ -285,7 +309,7 @@ export function AssistenteIAFullPage() {
             ? "bg-primary text-primary-foreground" 
             : "bg-muted"}`}
         >
-          <div className="whitespace-pre-wrap text-base">{message.content}</div>
+          <div className="whitespace-pre-wrap text-base leading-relaxed">{message.content}</div>
           
           {message.role === "assistant" && !message.feedback?.rating && (
             <div className="mt-3 flex items-center justify-end gap-2">

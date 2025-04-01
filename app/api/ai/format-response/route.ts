@@ -53,6 +53,19 @@ function formatResponse(text: string): string {
     // Remover asteriscos desnecessários
     let formatted = text.replace(/\*\*/g, '');
     
+    // Normalizar quebras de linha para evitar problemas de formatação
+    formatted = formatted.replace(/\r\n/g, '\n');
+    
+    // Corrigir problemas de palavras quebradas (como "jurí DICA")
+    formatted = formatted.replace(/([a-záàâãéèêíïóôõöúçñ])\s+([A-ZÁÀÂÃÉÈÊÍÏÓÔÕÖÚÇÑ]{2,})/gi, (match, p1, p2) => {
+      // Se a segunda parte for uma palavra de destaque conhecida, separe corretamente
+      if (/^(DICA|NOTA|IMPORTANTE|ATENÇÃO|LEMBRE)/i.test(p2)) {
+        return `${p1}\n\n${p2}`;
+      }
+      // Caso contrário, junte as partes
+      return `${p1}${p2.toLowerCase()}`;
+    });
+    
     // Identificar se o texto já tem estrutura de tópicos
     const hasBulletPoints = /^\d+\.\s|^-\s|^•\s/m.test(formatted);
     
@@ -72,18 +85,25 @@ function formatResponse(text: string): string {
       }
     }
     
-    // Adicionar formatação para destacar termos importantes
-    formatted = formatted.replace(/(?<!\w)(importante|atenção|nota|dica|lembre-se)(?!\w)/gi, (match) => {
-      return `\n${match.toUpperCase()}:\n`;
+    // Formatar termos de destaque de maneira consistente
+    formatted = formatted.replace(/(?<!\w)(importante|atenção|nota|dica|lembre-se)(?!\w)[:]*\s*/gi, (match) => {
+      const term = match.replace(/[:]*\s*$/, '');
+      return `\n\n${term.toUpperCase()}:\n`;
     });
     
     // Melhorar a formatação de listas de passos
     formatted = formatted.replace(/(?:\n|^)(passo\s*\d+|etapa\s*\d+)(?::)/gi, (match) => {
-      return `\n${match.toUpperCase()}`;
+      return `\n\n${match.toUpperCase()}`;
     });
     
     // Adicionar quebras de linha antes de novos tópicos para melhor legibilidade
-    formatted = formatted.replace(/(?:\n|^)(\d+\.\s)/g, '\n$1');
+    formatted = formatted.replace(/(?:\n|^)(\d+\.\s)/g, '\n\n$1');
+    
+    // Garantir que não haja mais de duas quebras de linha consecutivas
+    formatted = formatted.replace(/\n{3,}/g, '\n\n');
+    
+    // Garantir que o texto comece sem quebras de linha
+    formatted = formatted.replace(/^\n+/, '');
     
     return formatted;
   } catch (error) {
