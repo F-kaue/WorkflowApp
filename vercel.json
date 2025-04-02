@@ -1,7 +1,7 @@
 {
-    "functions": {
-      "api/generate-ticket.js": {
-        "maxDuration": 30
-      }
+  "functions": {
+    "app/api/generate-ticket/route.ts": {
+      "maxDuration": 30
     }
   }
+}
