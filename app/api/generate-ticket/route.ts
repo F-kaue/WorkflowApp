@@ -2,20 +2,20 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 
 // Configurações importantes para o Vercel
-export const maxDuration = 300; // Aumentado para 300 segundos (5 minutos) para garantir tempo suficiente
+export const maxDuration = 60; // Limitado a 60 segundos (1 minuto) para compatibilidade com o plano hobby do Vercel
 export const dynamic = 'force-dynamic'; // Garante que a rota seja tratada como dinâmica
 
-// Configuração do cliente OpenAI com timeout e retentativas
+// Configuração do cliente OpenAI com timeout e retentativas otimizados para o plano hobby do Vercel
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-  timeout: 120000, // Aumentado para 120 segundos (2 minutos)
-  maxRetries: 5,  // Aumentado para 5 tentativas
+  timeout: 50000, // Reduzido para 50 segundos para compatibilidade com o plano hobby
+  maxRetries: 2,  // Reduzido para 2 tentativas para evitar exceder o limite de tempo
   defaultHeaders: {
     "OpenAI-Beta": "assistants=v1",
     "User-Agent": "SindSystem-WorkflowApp/1.0"
   },
   defaultQuery: {
-    "request-timeout": "120s"
+    "request-timeout": "50s"
   }
 });
 
@@ -30,7 +30,7 @@ const AVAILABLE_MODELS = [
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Função para tentar executar uma operação com retentativas
-async function withRetry<T>(operation: () => Promise<T>, maxRetries = 5, initialDelay = 2000): Promise<T> {
+async function withRetry<T>(operation: () => Promise<T>, maxRetries = 2, initialDelay = 1000): Promise<T> {
   let lastError: any;
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -171,12 +171,12 @@ export async function POST(request: Request) {
 
     console.log("[generate-ticket] Prompt construído. Tamanho:", prompt.length);
 
-    // Controle de timeout manual com tempo aumentado
+    // Controle de timeout manual ajustado para o limite do Vercel
     const controller = new AbortController();
     const timeout = setTimeout(() => {
       console.log("[generate-ticket] Timeout atingido, abortando requisição...");
       controller.abort();
-    }, 240000); // 240s timeout (4 minutos)
+    }, 55000); // 55s timeout (para garantir que termine antes do limite de 60s do Vercel)
 
     try {
       console.log("[generate-ticket] Iniciando chamada à API OpenAI com sistema de retentativas e fallback...");
@@ -189,15 +189,15 @@ export async function POST(request: Request) {
         { role: "user" as const, content: prompt }
       ];
       
-      // Primeiro tentamos com o sistema de retentativas normal
+      // Primeiro tentamos com o sistema de retentativas otimizado para velocidade
       const completion = await withRetry(async () => {
         console.log("[generate-ticket] Tentando chamada à API OpenAI...");
         try {
           return await openai.chat.completions.create({
-            model: AVAILABLE_MODELS[0], // Usa o primeiro modelo (mais avançado)
+            model: AVAILABLE_MODELS[2], // Usa o modelo mais rápido (gpt-3.5-turbo)
             messages: messages,
             temperature: 0.7,
-            max_tokens: 1500,
+            max_tokens: 1000, // Reduzido para resposta mais rápida
           }, { signal: controller.signal });
         } catch (error) {
           // Se falhar com o modelo principal, tenta com os modelos alternativos
