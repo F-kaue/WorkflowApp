@@ -2,15 +2,47 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 
 // Configurações importantes para o Vercel
-export const maxDuration = 30; // Máximo permitido no plano Hobby
+export const maxDuration = 60; // Aumentado para 60 segundos
 export const dynamic = 'force-dynamic'; // Garante que a rota seja tratada como dinâmica
 
-// Configuração do cliente OpenAI com timeout
+// Configuração do cliente OpenAI com timeout e retentativas
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-  timeout: 20000, // Timeout de 20 segundos para a API
-  maxRetries: 1,  // Apenas 1 tentativa para evitar demoras
+  timeout: 50000, // Aumentado para 50 segundos
+  maxRetries: 3,  // Aumentado para 3 tentativas
+  defaultHeaders: {
+    "OpenAI-Beta": "assistants=v1"
+  },
+  defaultQuery: {
+    "request-timeout": "50s"
+  }
 });
+
+// Função para esperar um tempo específico
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Função para tentar executar uma operação com retentativas
+async function withRetry<T>(operation: () => Promise<T>, maxRetries = 3, initialDelay = 1000): Promise<T> {
+  let lastError: any;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error: any) {
+      lastError = error;
+      console.log(`[generate-ticket] Tentativa ${attempt} falhou:`, error.message);
+      
+      // Se for o último retry, não precisa esperar
+      if (attempt < maxRetries) {
+        const delay = initialDelay * Math.pow(2, attempt - 1); // Backoff exponencial
+        console.log(`[generate-ticket] Aguardando ${delay}ms antes da próxima tentativa...`);
+        await sleep(delay);
+      }
+    }
+  }
+  
+  throw lastError;
+}
 
 export async function POST(request: Request) {
   // Headers padrão para todas as respostas
@@ -92,24 +124,28 @@ export async function POST(request: Request) {
 
     console.log("[generate-ticket] Prompt construído. Tamanho:", prompt.length);
 
-    // Controle de timeout manual
+    // Controle de timeout manual com tempo aumentado
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 25000); // 25s timeout
+    const timeout = setTimeout(() => controller.abort(), 55000); // 55s timeout
 
     try {
-      console.log("[generate-ticket] Chamando API OpenAI...");
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4-turbo-preview",
-        messages: [
-          {
-            role: "system",
-            content: `Você é um assistente especializado em criar tickets técnicos para sindicatos. Seja conciso e objetivo.`
-          },
-          { role: "user", content: prompt }
-        ],
-        temperature: 0.7,
-        max_tokens: 1500, // Reduzido para melhor performance
-      }, { signal: controller.signal });
+      console.log("[generate-ticket] Chamando API OpenAI com sistema de retentativas...");
+      
+      const completion = await withRetry(async () => {
+        console.log("[generate-ticket] Tentando chamada à API OpenAI...");
+        return await openai.chat.completions.create({
+          model: "gpt-4-turbo-preview",
+          messages: [
+            {
+              role: "system",
+              content: `Você é um assistente especializado em criar tickets técnicos para sindicatos. Seja conciso e objetivo.`
+            },
+            { role: "user", content: prompt }
+          ],
+          temperature: 0.7,
+          max_tokens: 1500,
+        }, { signal: controller.signal });
+      }, 3, 2000); // 3 tentativas com 2s de espera inicial
 
       clearTimeout(timeout);
 
@@ -144,25 +180,66 @@ export async function POST(request: Request) {
       console.error("[generate-ticket] Erro na chamada à API OpenAI:", error);
 
       if (error instanceof OpenAI.APIError) {
+        console.error(`[generate-ticket] Erro na API OpenAI: ${error.message}, Status: ${error.status}, Código: ${error.code}`);
+        
+        // Tratamento específico para diferentes tipos de erros da OpenAI
+        if (error.code === 'insufficient_quota') {
+          return NextResponse.json(
+            { 
+              success: false,
+              error: "Limite de cota da API OpenAI atingido",
+              details: {
+                type: "openai_quota_error",
+                status: error.status,
+                code: error.code,
+                request_id: error.request_id,
+                timestamp: new Date().toISOString()
+              }
+            },
+            { status: 402, headers } // 402 Payment Required
+          );
+        } else if (error.code === 'rate_limit_exceeded') {
+          return NextResponse.json(
+            { 
+              success: false,
+              error: "Limite de requisições da API OpenAI atingido. Tente novamente em alguns segundos.",
+              details: {
+                type: "openai_rate_limit_error",
+                status: error.status,
+                code: error.code,
+                request_id: error.request_id,
+                timestamp: new Date().toISOString()
+              }
+            },
+            { status: 429, headers } // 429 Too Many Requests
+          );
+        } else {
+          return NextResponse.json(
+            { 
+              success: false,
+              error: `Erro na API OpenAI: ${error.message}`,
+              details: {
+                type: "openai_api_error",
+                status: error.status,
+                code: error.code,
+                request_id: error.request_id,
+                timestamp: new Date().toISOString()
+              }
+            },
+            { status: 502, headers } // 502 Bad Gateway
+          );
+        }
+      } else if (error instanceof Error && error.name === 'AbortError') {
+        console.error("[generate-ticket] Timeout atingido após múltiplas tentativas");
         return NextResponse.json(
           { 
             success: false,
-            error: `Erro na API OpenAI: ${error.message}`,
+            error: "Tempo limite excedido ao gerar o ticket",
             details: {
-              type: "openai_api_error",
-              status: error.status,
-              code: error.code,
-              request_id: error.request_id,
+              type: "timeout_error",
+              message: error.message,
               timestamp: new Date().toISOString()
             }
-          },
-          { status: 502, headers } // 502 Bad Gateway
-        );
-      } else if (error instanceof Error && error.name === 'AbortError') {
-        return NextResponse.json(
-          { 
-            success: false,
-            error: "Tempo limite excedido ao gerar o ticket"
           },
           { status: 504, headers } // 504 Gateway Timeout
         );
