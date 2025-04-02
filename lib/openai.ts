@@ -28,11 +28,11 @@ export async function OpenAIStream(prompt: string): Promise<Response> {
     const completion = await openai.chat.completions.create({
       messages: [
         {
-          role: "system",
+          role: "system" as const,
           content: "Você é um assistente especializado em gerenciamento de projetos e chamados técnicos, com foco em desenvolvimento de software e banco de dados. Suas respostas devem ser objetivas, técnicas e bem estruturadas."
         },
         {
-          role: "user",
+          role: "user" as const,
           content: prompt
         }
       ],
