@@ -267,7 +267,7 @@ export function AssistenteIAFullPage() {
 
     // Enviar feedback detalhado para a API com melhor tratamento de erros
     try {
-      // Verificar se o rating existe, caso contrário usar um valor padrão (1 para feedback negativo)
+      // Verificar se o rating existe, caso contrário usar um valor padrão (1 para feedback negativoo)
       const rating = feedbackMessage.feedback?.rating || 1;
       
       console.log("Enviando feedback detalhado com rating:", rating);
