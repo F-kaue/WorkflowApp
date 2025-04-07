@@ -124,11 +124,35 @@ export async function POST(request: Request) {
       return data.content;
     }).join('\n\n');
     console.log(`Encontrados ${trainingSnapshot.size} documentos de treinamento`);
+    
+    // Buscar dados de aprendizado de feedback negativo
+    console.log('Buscando dados de aprendizado de feedback negativo');
+    const learningSnapshot = await adminDb.collection('ai_learning')
+      .orderBy('timestamp', 'desc')
+      .limit(10)
+      .get();
+    
+    // Extrair conteúdo de aprendizado
+    let learningData = '';
+    if (learningSnapshot.size > 0) {
+      learningData = '\n\nAQUI ESTÃO ALGUMAS MELHORIAS BASEADAS EM FEEDBACK ANTERIOR:\n';
+      learningSnapshot.docs.forEach((doc: FirebaseFirestore.QueryDocumentSnapshot) => {
+        const data = doc.data();
+        learningData += `\nProblema: ${data.originalResponse}\nMelhoria: ${data.improvedResponse}\nMotivo: ${data.feedback}\n---\n`;
+      });
+      console.log(`Encontrados ${learningSnapshot.size} documentos de aprendizado`);
+    } else {
+      console.log('Nenhum documento de aprendizado encontrado');
+    }
 
-    // Construir o prompt do sistema com os dados de treinamento
+    // Construir o prompt do sistema com os dados de treinamento e aprendizado
     const systemPrompt = `Você é um assistente especializado no sistema SindSystem, focado em ajudar usuários com dúvidas sobre o sistema. Suas respostas devem ser claras, objetivas e detalhadas, fornecendo passos específicos quando necessário. Use tópicos numerados para instruções com múltiplos passos. Evite usar asteriscos para ênfase. Seja conciso e direto, priorizando informações relevantes. Você deve ser cordial e profissional.
 
-Aqui estão informações específicas sobre o sistema que você deve usar para responder às perguntas:\n${trainingData}`;
+Aqui estão informações específicas sobre o sistema que você deve usar para responder às perguntas:\n${trainingData}
+
+${learningData}
+
+IMPORTANTE: Aprenda com os exemplos de melhorias acima para evitar problemas semelhantes em suas respostas. Priorize clareza, precisão e completude nas informações.`;
 
     console.log('Prompt do sistema construído com dados de treinamento');
 

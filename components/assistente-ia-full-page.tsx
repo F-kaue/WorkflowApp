@@ -189,6 +189,27 @@ export function AssistenteIAFullPage() {
     // Se a avaliação for baixa, solicitar comentário
     if (rating < 3) {
       setFeedbackMessage(message)
+      
+      // Mesmo para avaliações baixas, enviar o feedback inicial para o sistema
+      // Isso permite que o sistema comece a processar o feedback negativo imediatamente
+      try {
+        await fetch("/api/ai/feedback", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            messageId: message.id,
+            rating,
+            comment: "",
+            isNegativeFeedback: true // Indicador de feedback negativo
+          }),
+        })
+        // Não exibimos toast aqui pois ainda vamos solicitar o comentário detalhado
+      } catch (error) {
+        console.error("Erro ao enviar feedback inicial negativo:", error)
+        // Não exibimos toast de erro aqui para não interromper o fluxo de feedback
+      }
     } else {
       // Enviar feedback para a API com melhor tratamento de erros
       try {
@@ -244,8 +265,13 @@ export function AssistenteIAFullPage() {
       )
     )
 
-    // Enviar feedback para a API com melhor tratamento de erros
+    // Enviar feedback detalhado para a API com melhor tratamento de erros
     try {
+      // Verificar se o rating existe, caso contrário usar um valor padrão (1 para feedback negativo)
+      const rating = feedbackMessage.feedback?.rating || 1;
+      
+      console.log("Enviando feedback detalhado com rating:", rating);
+      
       const response = await fetch("/api/ai/feedback", {
         method: "POST",
         headers: {
@@ -253,8 +279,10 @@ export function AssistenteIAFullPage() {
         },
         body: JSON.stringify({
           messageId: feedbackMessage.id,
-          rating: feedbackMessage.feedback?.rating,
-          comment: feedbackComment
+          rating: rating, // Usar o rating verificado
+          comment: feedbackComment,
+          isNegativeFeedback: true, // Indicador de feedback negativo
+          isDetailedFeedback: true  // Indicador de feedback detalhado
         }),
       })
       
@@ -265,9 +293,30 @@ export function AssistenteIAFullPage() {
       
       const data = await response.json();
 
+      // Após enviar o feedback detalhado, também enviar para a API de aprendizado
+      try {
+        // Usar o mesmo rating verificado para a API de aprendizado
+        await fetch("/api/ai/learn-from-feedback", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            messageId: feedbackMessage.id,
+            rating: rating, // Usar o rating verificado anteriormente
+            comment: feedbackComment,
+            content: feedbackMessage.content
+          }),
+        });
+        console.log("Feedback enviado para aprendizado");
+      } catch (learnError) {
+        console.error("Erro ao enviar feedback para aprendizado:", learnError);
+        // Não interrompemos o fluxo principal se o aprendizado falhar
+      }
+
       toast({
         title: "Feedback enviado",
-        description: data.message || "Obrigado pelo seu feedback detalhado!",
+        description: data.message || "Obrigado pelo seu feedback! Vamos usar isso para melhorar.",
       })
 
       // Limpar o estado de feedback

@@ -49,6 +49,10 @@ export async function POST(request: Request) {
         );
       }
       
+      // Extrair flags adicionais do corpo da requisição
+      const isNegativeFeedback = body.isNegativeFeedback === true;
+      const isDetailedFeedback = body.isDetailedFeedback === true;
+      
       const feedbackData = {
         messageId,
         rating: ratingNumber,
@@ -60,8 +64,12 @@ export async function POST(request: Request) {
         // Campos adicionais para aprendizado da IA
         isPositive: ratingNumber >= 3,
         learnPattern: ratingNumber >= 4, // Aprender com respostas muito bem avaliadas
-        needsImprovement: ratingNumber < 3, // Identificar padrões que precisam melhorar
-        improvementSuggestion: comment || ""
+        needsImprovement: ratingNumber < 3 || isNegativeFeedback, // Identificar padrões que precisam melhorar
+        improvementSuggestion: comment || "",
+        isNegativeFeedback: isNegativeFeedback,
+        isDetailedFeedback: isDetailedFeedback,
+        processed: false, // Flag para indicar se o feedback já foi processado para aprendizado
+        processingAttempts: 0 // Contador de tentativas de processamento
       };
 
       console.log("Salvando feedback no Firestore...", feedbackData);

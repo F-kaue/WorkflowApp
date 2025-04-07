@@ -9,6 +9,7 @@ if (!process.env.OPENAI_API_KEY) {
   try {
     openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
+      maxRetries: 2
     });
   } catch (error) {
     console.error('Erro ao inicializar cliente OpenAI:', error);

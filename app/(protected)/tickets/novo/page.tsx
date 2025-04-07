@@ -38,12 +38,82 @@ export default function NovoTicketPage() {
         body: JSON.stringify(formData),
       })
 
+      // Obter o texto da resposta primeiro para evitar erros de stream já lido
+      const responseText = await generateResponse.text()
+      
+      // Verificar se a resposta foi bem-sucedida
       if (!generateResponse.ok) {
-        const errorData = await generateResponse.json()
-        throw new Error(errorData.error || "Erro ao gerar ticket")
+        console.error("Erro na resposta da API:", generateResponse.status, responseText.substring(0, 100))
+        throw new Error(`Erro ${generateResponse.status}: ${responseText || "Erro desconhecido"}`)
       }
-
-      const { ticketGerado: generatedTicket } = await generateResponse.json()
+      
+      // Tentar converter para JSON se possível
+      let responseData: any = null
+      try {
+        responseData = JSON.parse(responseText)
+        console.log("Resposta JSON processada com sucesso")
+      } catch (jsonError) {
+        console.log("Resposta não é um JSON válido, usando como texto")
+        // Se não for JSON válido, usar o texto diretamente como resposta
+        responseData = responseText
+      }
+      
+      // Verificar se a resposta está vazia
+      if (!responseData) {
+        throw new Error("Resposta vazia do servidor")
+      }
+      
+      // Extrair o ticket da resposta
+      let generatedTicket = null
+      
+      // Caso 1: Se a resposta for uma string direta, use-a como ticket
+      if (typeof responseData === 'string' && responseData.trim().length > 0) {
+        generatedTicket = responseData
+        console.log("Usando resposta direta como ticket")
+      }
+      // Caso 2: Se a resposta for um objeto, procurar o ticket em várias propriedades possíveis
+      else if (typeof responseData === 'object' && responseData !== null) {
+        // Verificar todas as possíveis propriedades onde o ticket pode estar
+        if (responseData.ticket && typeof responseData.ticket === 'string') {
+          generatedTicket = responseData.ticket
+          console.log("Ticket encontrado na propriedade 'ticket'")
+        } else if (responseData.ticketGerado && typeof responseData.ticketGerado === 'string') {
+          generatedTicket = responseData.ticketGerado
+          console.log("Ticket encontrado na propriedade 'ticketGerado'")
+        } else if (responseData.content && typeof responseData.content === 'string') {
+          generatedTicket = responseData.content
+          console.log("Ticket encontrado na propriedade 'content'")
+        } else if (responseData.success === true && responseData.data && typeof responseData.data === 'object') {
+          // Verificar se o ticket está em um objeto data aninhado
+          if (responseData.data.ticket && typeof responseData.data.ticket === 'string') {
+            generatedTicket = responseData.data.ticket
+            console.log("Ticket encontrado na propriedade 'data.ticket'")
+          } else if (responseData.data.ticketGerado && typeof responseData.data.ticketGerado === 'string') {
+            generatedTicket = responseData.data.ticketGerado
+            console.log("Ticket encontrado na propriedade 'data.ticketGerado'")
+          } else if (responseData.data.content && typeof responseData.data.content === 'string') {
+            generatedTicket = responseData.data.content
+            console.log("Ticket encontrado na propriedade 'data.content'")
+          }
+        }
+        
+        // Última tentativa: verificar se há alguma propriedade que contenha uma string longa
+        if (!generatedTicket) {
+          for (const key in responseData) {
+            if (typeof responseData[key] === 'string' && responseData[key].length > 100) {
+              generatedTicket = responseData[key]
+              console.log(`Encontrado possível ticket na propriedade '${key}'`)
+              break
+            }
+          }
+        }
+      }
+      
+      if (!generatedTicket) {
+        console.error("Resposta sem ticket:", typeof responseData === 'object' ? JSON.stringify(responseData).substring(0, 100) : responseData.substring(0, 100))
+        throw new Error("Resposta da API não contém o ticket gerado")
+      }
+      
       setTicketGerado(generatedTicket)
       setActiveTab("preview")
       
@@ -55,7 +125,7 @@ export default function NovoTicketPage() {
       console.error("Erro:", error)
       toast({
         title: "Erro",
-        description: error instanceof Error ? error.message : "Ocorreu um erro ao gerar o ticket. Tente novamente.",
+        description: error instanceof Error ? error.message : "Ocorreu um erro ao gerar o ticket. Por favor, tente novamente mais tarde.",
         variant: "destructive",
       })
     } finally {
