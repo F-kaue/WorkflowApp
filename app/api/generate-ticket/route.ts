@@ -355,7 +355,7 @@ A padronização dos tipos de documentos é importante para a organização e ef
     const timeout = setTimeout(() => {
       console.log("[generate-ticket] Timeout atingido, abortando requisição...");
       controller.abort("Timeout excedido");
-    }, 50000); // 50s timeout (ajustado para aproveitar melhor o limite do Vercel)
+    }, 45000); // 45s timeout (ajustado para aproveitar melhor o limite do Vercel)
 
     try {
       // A variável feedbackData já foi inicializada no início da função

@@ -3,7 +3,7 @@ import OpenAI from "openai";
 import { adminDb } from "@/lib/firebase-admin-server";
 
 // Configurações importantes para o Vercel
-export const maxDuration = 300;
+export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
 // Configuração do cliente OpenAI

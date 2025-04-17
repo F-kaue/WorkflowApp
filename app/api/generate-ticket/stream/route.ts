@@ -2,14 +2,14 @@ import { NextRequest } from "next/server";
 import OpenAI from "openai";
 
 // Configurações importantes para o Vercel
-export const maxDuration = 300; // Aumentado para 5 minutos
+export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
 // Configuração do cliente OpenAI
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
   maxRetries: 2,
-  timeout: 60000, // Aumentado para 60 segundos
+  timeout: 50000, // 50 segundos para garantir que fique dentro do limite da Vercel
 });
 
 // Função para criar um encoder uma vez
