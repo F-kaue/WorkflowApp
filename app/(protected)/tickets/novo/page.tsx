@@ -35,7 +35,7 @@ export default function NovoTicketPage() {
       }
       
       setPreviewLoading(true)
-      setTicketGerado(null) // Resetar ticket anterior
+      setTicketGerado(null) // Resetar ticket anterior forçar subir
       // Mudar para a aba de preview onde o AsyncTicketGenerator será iniciado
       setActiveTab("preview")
       
