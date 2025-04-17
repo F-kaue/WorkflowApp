@@ -12,7 +12,7 @@ import { Loader2, Copy, Save, ArrowLeft, Eye } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import AsyncTicketGenerator from "@/components/AsyncTicketGenerator"
+import { AsyncTicketGenerator } from "@/components/AsyncTicketGenerator"
 
 export default function NovoTicketPage() {
   const router = useRouter()
@@ -27,7 +27,6 @@ export default function NovoTicketPage() {
 
   const handlePreview = async (e: React.FormEvent) => {
     e.preventDefault()
-    setPreviewLoading(true)
     
     try {
       // Verificar se os campos obrigatórios estão preenchidos
@@ -35,6 +34,8 @@ export default function NovoTicketPage() {
         throw new Error("Preencha todos os campos obrigatórios")
       }
       
+      setPreviewLoading(true)
+      setTicketGerado(null) // Resetar ticket anterior
       // Mudar para a aba de preview onde o AsyncTicketGenerator será iniciado
       setActiveTab("preview")
       
@@ -45,8 +46,14 @@ export default function NovoTicketPage() {
         description: error instanceof Error ? error.message : "Ocorreu um erro ao gerar o ticket. Por favor, tente novamente mais tarde.",
         variant: "destructive",
       })
-      setPreviewLoading(false)
     }
+  }
+
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
+    const { name, value } = e.target
+    setFormData(prev => ({ ...prev, [name]: value }))
   }
 
   const handleSave = async () => {
@@ -55,7 +62,6 @@ export default function NovoTicketPage() {
     setLoading(true)
 
     try {
-      // Salva o ticket no banco
       const saveResponse = await fetch("/api/tickets", {
         method: "POST",
         headers: {
@@ -110,7 +116,6 @@ export default function NovoTicketPage() {
     
     for (const line of lines) {
       if (line.startsWith('## ')) {
-        // Se encontramos uma nova seção, salvamos a anterior
         if (currentSection && currentContent) {
           sections[currentSection] = currentContent.trim()
         }
@@ -121,7 +126,6 @@ export default function NovoTicketPage() {
       }
     }
 
-    // Adiciona a última seção
     if (currentSection && currentContent) {
       sections[currentSection] = currentContent.trim()
     }
@@ -139,7 +143,7 @@ export default function NovoTicketPage() {
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="form">Formulário</TabsTrigger>
-              <TabsTrigger value="preview" disabled={!ticketGerado}>Pré-visualização</TabsTrigger>
+              <TabsTrigger value="preview">Pré-visualização</TabsTrigger>
             </TabsList>
             
             <TabsContent value="form" className="space-y-4 pt-4">
@@ -148,22 +152,20 @@ export default function NovoTicketPage() {
                   <Label htmlFor="sindicato">Nome do Sindicato</Label>
                   <Input
                     id="sindicato"
+                    name="sindicato"
                     value={formData.sindicato}
-                    onChange={(e) =>
-                      setFormData({ ...formData, sindicato: e.target.value })
-                    }
+                    onChange={handleInputChange}
                     required
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="solicitacao">Solicitação</Label>
+                  <Label htmlFor="solicitacaoOriginal">Solicitação</Label>
                   <Textarea
-                    id="solicitacao"
+                    id="solicitacaoOriginal"
+                    name="solicitacaoOriginal"
                     value={formData.solicitacaoOriginal}
-                    onChange={(e) =>
-                      setFormData({ ...formData, solicitacaoOriginal: e.target.value })
-                    }
+                    onChange={handleInputChange}
                     className="min-h-[200px]"
                     required
                   />
@@ -189,34 +191,29 @@ export default function NovoTicketPage() {
             </TabsContent>
             
             <TabsContent value="preview" className="space-y-6 pt-4">
-              {activeTab === "preview" && !ticketGerado && !previewLoading && (
+              {activeTab === "preview" && previewLoading && (
                 <div className="mb-6">
                   <AsyncTicketGenerator 
                     sindicato={formData.sindicato}
                     solicitacaoOriginal={formData.solicitacaoOriginal}
-                    onTicketGenerated={(ticket) => {
+                    onComplete={(ticket) => {
                       setTicketGerado(ticket);
+                      setPreviewLoading(false);
                       toast({
                         title: "Sucesso",
                         description: "Ticket gerado com sucesso! Verifique a pré-visualização.",
                       });
                     }}
                     onError={(error) => {
+                      setPreviewLoading(false);
                       toast({
                         title: "Erro",
-                        description: error.message || "Ocorreu um erro ao gerar o ticket. Por favor, tente novamente mais tarde.",
+                        description: error || "Ocorreu um erro ao gerar o ticket. Por favor, tente novamente mais tarde.",
                         variant: "destructive",
                       });
                       setActiveTab("form");
                     }}
                   />
-                </div>
-              )}
-              
-              {previewLoading && !ticketGerado && (
-                <div className="flex flex-col items-center justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
-                  <p className="text-muted-foreground">Preparando geração do ticket...</p>
                 </div>
               )}
               
@@ -261,7 +258,10 @@ export default function NovoTicketPage() {
                   <div className="flex justify-between pt-4">
                     <Button 
                       variant="outline" 
-                      onClick={() => setActiveTab("form")}
+                      onClick={() => {
+                        setActiveTab("form");
+                        setPreviewLoading(false);
+                      }}
                     >
                       <ArrowLeft className="mr-2 h-4 w-4" />
                       Voltar ao Formulário

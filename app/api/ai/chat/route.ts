@@ -1,262 +1,170 @@
-import { NextResponse } from 'next/server';
-import OpenAI from 'openai';
-import { adminDb, assertIsServer } from '@/lib/firebase-admin-server';
-import { Timestamp } from 'firebase-admin/firestore';
+import { NextRequest } from "next/server";
+import OpenAI from "openai";
+import { adminDb } from "@/lib/firebase-admin-server";
 
-// Interface para documentos da coleção ai_training
-interface AITrainingDocument {
-  content: string;
-  timestamp: Timestamp;
-  [key: string]: any; // Para outros campos que possam existir
-}
+// Configurações importantes para o Vercel
+export const maxDuration = 300;
+export const dynamic = 'force-dynamic';
 
-// Garantir que este código só execute no servidor
-assertIsServer();
+// Configuração do cliente OpenAI
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+  maxRetries: 2,
+  timeout: 60000,
+});
 
-// Cache para respostas similares
-const responseCache = new Map();
+// Função para criar um encoder uma vez
+const encoder = new TextEncoder();
 
-// Função para gerar uma chave de cache baseada na mensagem
-function generateCacheKey(message: string): string {
-  // Normalizar a mensagem para melhorar as chances de cache hit
-  return message.trim().toLowerCase();
-}
-
-type ChatRequestBody = {
-  message: string;
-};
-
-// Função para verificar se duas strings são similares (para cache aproximado)
-function stringSimilarity(s1: string, s2: string): number {
-  const longer = s1.length > s2.length ? s1 : s2;
-  const shorter = s1.length > s2.length ? s2 : s1;
-  if (longer.length === 0) return 1.0;
-  return (longer.length - editDistance(longer, shorter)) / longer.length;
-}
-
-function editDistance(s1: string, s2: string): number {
-  s1 = s1.toLowerCase();
-  s2 = s2.toLowerCase();
-  const costs = [];
-  for (let i = 0; i <= s1.length; i++) {
-    let lastValue = i;
-    for (let j = 0; j <= s2.length; j++) {
-      if (i === 0) costs[j] = j;
-      else if (j > 0) {
-        let newValue = costs[j - 1];
-        if (s1.charAt(i - 1) !== s2.charAt(j - 1))
-          newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
-        costs[j - 1] = lastValue;
-        lastValue = newValue;
-      }
-    }
-    if (i > 0) costs[s2.length] = lastValue;
-  }
-  return costs[s2.length];
-}
-
-export async function POST(request: Request) {
+// Função para buscar conhecimento da base de dados
+async function getTrainingKnowledge() {
   try {
-    // Implementar cache-control para navegadores
-    const headers = new Headers();
-    headers.append('Cache-Control', 'private, max-age=3600');
+    const querySnapshot = await adminDb.collection("ai_training")
+      .orderBy("timestamp", "desc")
+      .get();
+    
+    const knowledge = querySnapshot.docs.map((doc: any) => doc.data().content).join("\n\n");
+    return knowledge;
+  } catch (error) {
+    console.error("Erro ao buscar conhecimento:", error);
+    return "";
+  }
+}
 
-    const body: ChatRequestBody = await request.json();
-    const { message } = body;
+export async function POST(request: NextRequest) {
+  // Headers para streaming
+  const headers = {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+  };
 
-    if (!message) {
-      return NextResponse.json(
-        { error: 'Mensagem não fornecida' },
-        { status: 400, headers }
-      );
-    }
-
-    // Verificar cache para mensagens idênticas ou muito similares
-    const cacheKey = generateCacheKey(message);
-    if (responseCache.has(cacheKey)) {
-      console.log('Cache hit para mensagem idêntica');
-      return NextResponse.json(responseCache.get(cacheKey), { headers });
-    }
-
-    // Verificar cache para mensagens similares (threshold de 0.85 de similaridade)
-    for (const [key, value] of responseCache.entries()) {
-      if (stringSimilarity(cacheKey, key) > 0.85) {
-        console.log('Cache hit para mensagem similar');
-        return NextResponse.json(value, { headers });
-      }
-    }
-
-    // Verificar se a chave da API está definida
+  try {
+    // Verificação da API Key
     if (!process.env.OPENAI_API_KEY) {
-      console.error('OPENAI_API_KEY não está definida nas variáveis de ambiente');
-      return NextResponse.json(
-        { error: 'Configuração da API não está completa' },
-        { status: 500 }
-      );
+      throw new Error("API Key da OpenAI não configurada");
     }
 
-    // Verificar se a chave da API começa com o prefixo correto
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey.startsWith('sk-')) {
-      console.error('OPENAI_API_KEY parece estar em formato inválido');
-      return NextResponse.json(
-        { error: 'Configuração da API OpenAI parece estar incorreta' },
-        { status: 500 }
-      );
-    }
-
-    console.log('Iniciando chamada para OpenAI API');
-
-    const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
-
-    // Buscar dados de treinamento do Firestore
-    console.log('Buscando dados de treinamento do Firestore');
-    const trainingSnapshot = await adminDb.collection('ai_training')
-      .orderBy('timestamp', 'desc')
-      .limit(20)
-      .get();
-
-    // Extrair conteúdo de treinamento
-    const trainingData = trainingSnapshot.docs.map((doc: FirebaseFirestore.QueryDocumentSnapshot<AITrainingDocument>) => {
-      const data = doc.data() as AITrainingDocument;
-      return data.content;
-    }).join('\n\n');
-    console.log(`Encontrados ${trainingSnapshot.size} documentos de treinamento`);
+    // Validação do corpo da requisição
+    const requestBody = await request.json();
+    const { message } = requestBody;
     
-    // Buscar dados de aprendizado de feedback negativo
-    console.log('Buscando dados de aprendizado de feedback negativo');
-    const learningSnapshot = await adminDb.collection('ai_learning')
-      .orderBy('timestamp', 'desc')
-      .limit(10)
-      .get();
-    
-    // Extrair conteúdo de aprendizado
-    let learningData = '';
-    if (learningSnapshot.size > 0) {
-      learningData = '\n\nAQUI ESTÃO ALGUMAS MELHORIAS BASEADAS EM FEEDBACK ANTERIOR:\n';
-      learningSnapshot.docs.forEach((doc: FirebaseFirestore.QueryDocumentSnapshot) => {
-        const data = doc.data();
-        learningData += `\nProblema: ${data.originalResponse}\nMelhoria: ${data.improvedResponse}\nMotivo: ${data.feedback}\n---\n`;
-      });
-      console.log(`Encontrados ${learningSnapshot.size} documentos de aprendizado`);
-    } else {
-      console.log('Nenhum documento de aprendizado encontrado');
+    if (!message) {
+      throw new Error("Campo 'message' é obrigatório");
     }
 
-    // Construir o prompt do sistema com os dados de treinamento e aprendizado
-    const systemPrompt = `Você é um assistente especializado no sistema SindSystem, focado em ajudar usuários com dúvidas sobre o sistema. Suas respostas devem ser claras, objetivas e detalhadas, fornecendo passos específicos quando necessário. Use tópicos numerados para instruções com múltiplos passos. Evite usar asteriscos para ênfase. Seja conciso e direto, priorizando informações relevantes. Você deve ser cordial e profissional.
+    // Buscar conhecimento da base de dados
+    const trainingKnowledge = await getTrainingKnowledge();
 
-Aqui estão informações específicas sobre o sistema que você deve usar para responder às perguntas:\n${trainingData}
+    // Construir o prompt do sistema
+    const systemPrompt = `Você é um assistente especializado no sistema SindSystem, um software completo para gestão de sindicatos.
+Você tem conhecimento profundo sobre todas as funcionalidades do sistema e deve:
 
-${learningData}
+1. Fornecer respostas diretas e objetivas
+2. Usar linguagem técnica apropriada
+3. Referenciar módulos e funcionalidades específicas do sistema
+4. Incluir passos detalhados quando necessário
+5. Manter o contexto das conversas anteriores
 
-IMPORTANTE: Aprenda com os exemplos de melhorias acima para evitar problemas semelhantes em suas respostas. Priorize clareza, precisão e completude nas informações.`;
+Conhecimento específico do sistema:
 
-    console.log('Prompt do sistema construído com dados de treinamento');
+${trainingKnowledge}
 
-    const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
+Se não souber algo com certeza, admita e sugira consultar a documentação ou o suporte.`;
+
+    // Criar um ReadableStream para enviar a resposta
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          const completion = await openai.chat.completions.create({
+            model: "gpt-3.5-turbo",
       messages: [
-        {
-          role: 'system',
-          content: systemPrompt
-        },
-        { role: 'user', content: message }
+              { role: "system", content: systemPrompt },
+              { role: "user", content: message }
       ],
       temperature: 0.7,
-      max_tokens: 800,
-      presence_penalty: 0.1,  // Reduz repetições
-      frequency_penalty: 0.1, // Encoraja diversidade no texto
+            max_tokens: 2000,
+            stream: true,
+          });
+
+          let accumulatedContent = '';
+
+          for await (const chunk of completion) {
+            const content = chunk.choices[0]?.delta?.content || '';
+            if (content) {
+              accumulatedContent += content;
+              controller.enqueue(encoder.encode(content));
+            }
+          }
+          
+          controller.close();
+
+          // Salvar a conversa no histórico em background
+          try {
+            const messagesCollection = adminDb.collection('chat_history');
+            
+            // Salvar mensagem do usuário
+            await messagesCollection.add({
+              role: 'user',
+              content: message,
+              timestamp: new Date(),
+            });
+
+            // Salvar resposta do assistente
+            await messagesCollection.add({
+              role: 'assistant',
+              content: accumulatedContent,
+              timestamp: new Date(),
+            });
+          } catch (error) {
+            console.error("Erro ao salvar no histórico:", error);
+          }
+        } catch (error) {
+          console.error("Erro durante a geração:", error);
+          controller.error(error);
+        }
+      },
+      cancel() {
+        // Cleanup se necessário
+      }
     });
 
-    console.log('Resposta gerada com base nos dados de treinamento');
-
-    console.log('Resposta recebida da OpenAI API');
-
-    const aiResponse = response.choices[0].message.content;
-
-    // Formatar a resposta para melhor organização
-    try {
-      const formatResponse = await fetch(new URL('/api/ai/format-response', request.url), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ response: aiResponse }),
-      });
-
-      // Verificar se a resposta é válida
-      if (!formatResponse.ok) {
-        console.log('Formatação falhou, retornando resposta original');
-        // Se a formatação falhar, retornar a resposta original
-        return NextResponse.json({ response: aiResponse });
+    return new Response(stream, {
+      headers: {
+        ...headers,
+        'X-Content-Type-Options': 'nosniff'
       }
+    });
 
-      // Verificar o tipo de conteúdo da resposta
-      const contentType = formatResponse.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) {
-        console.error('Resposta de formatação não é JSON. Tipo de conteúdo:', contentType);
-        return NextResponse.json({ response: aiResponse });
-      }
-
-      // Tentar fazer o parsing do JSON com tratamento de erro
-      const formattedData = await formatResponse.json();
-      
-      // Armazenar no cache
-      responseCache.set(cacheKey, { response: formattedData.response });
-
-      // Limitar o tamanho do cache para evitar uso excessivo de memória
-      if (responseCache.size > 100) {
-        const oldestKey = responseCache.keys().next().value;
-        responseCache.delete(oldestKey);
-      }
-
-      return NextResponse.json({
-        response: formattedData.response
-      }, { headers });
-    } catch (formatError) {
-      console.error('Erro ao formatar resposta:', formatError);
-      // Se ocorrer qualquer erro na formatação, retornar a resposta original
-      
-      // Armazenar no cache mesmo em caso de erro
-      responseCache.set(cacheKey, { response: aiResponse });
-      
-      // Limitar o tamanho do cache para evitar uso excessivo de memória
-      if (responseCache.size > 100) {
-        const oldestKey = responseCache.keys().next().value;
-        responseCache.delete(oldestKey);
-      }
-      
-      return NextResponse.json({ response: aiResponse }, { headers });
-    }
-  } catch (error: any) {
-    console.error('Erro ao processar mensagem:', error);
-
-    // Tratamento de erros mais específico
-    let errorMessage = 'Erro ao processar a solicitação';
-    let statusCode = 500;
+  } catch (error) {
+    console.error("Erro na geração da resposta:", error);
 
     if (error instanceof OpenAI.APIError) {
-      console.error('OpenAI API Error:', error.status, error.message);
-      errorMessage = `Erro na API OpenAI: ${error.message}`;
-
-      // Tratamento específico para erros comuns da API OpenAI
-      if (error.status === 401) {
-        errorMessage = 'Erro de autenticação com a API OpenAI. Verifique a chave da API.';
-      } else if (error.status === 429) {
-        errorMessage = 'Limite de requisições excedido na API OpenAI. Tente novamente mais tarde.';
-      } else if (error.status === 500) {
-        errorMessage = 'Erro interno no servidor da OpenAI. Tente novamente mais tarde.';
-      }
-    } else if (error instanceof Error) {
-      errorMessage = `Erro: ${error.message}`;
+      return new Response(
+        JSON.stringify({
+          error: `Erro na API da OpenAI: ${error.message}`,
+          code: error.code,
+          status: error.status
+        }),
+        { 
+          status: error.status || 500,
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        }
+      );
     }
 
-    return NextResponse.json(
-      { error: errorMessage },
-      { status: statusCode }
+    return new Response(
+      JSON.stringify({
+        error: error instanceof Error ? error.message : "Erro interno ao gerar resposta",
+      }),
+      { 
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }
     );
   }
 }

@@ -1,349 +1,190 @@
 import { NextRequest } from "next/server";
 import OpenAI from "openai";
-import { adminDb } from "@/lib/firebase-admin-server";
-import { findSimilarTicket, cacheTicket } from "@/lib/ticket-cache";
 
 // Configurações importantes para o Vercel
-export const maxDuration = 60; // Limitado a 60 segundos (1 minuto) para compatibilidade com o plano hobby do Vercel
-export const dynamic = 'force-dynamic'; // Garante que a rota seja tratada como dinâmica
+export const maxDuration = 300; // Aumentado para 5 minutos
+export const dynamic = 'force-dynamic';
 
-// Configuração do cliente OpenAI com retentativas otimizados para o plano hobby do Vercel
+// Configuração do cliente OpenAI
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-  maxRetries: 1,  // Reduzido para 1 tentativa para evitar exceder o limite do Vercel
-  timeout: 25000, // Timeout de 25 segundos para a requisição à API
+  maxRetries: 2,
+  timeout: 60000, // Aumentado para 60 segundos
 });
 
-// Modelos disponíveis em ordem de preferência
-const AVAILABLE_MODELS = [
-  "gpt-3.5-turbo", // Usando modelo mais rápido como primeira opção para streaming
-  "gpt-4-turbo-preview",
-  "gpt-4"
-];
-
-// Função para determinar o responsável com base no conteúdo da solicitação
-function determinarResponsavel(conteudo: string): string {
-  const conteudoLowerCase = conteudo.toLowerCase();
-  
-  // Palavras-chave para atribuição ao Walter (banco de dados, exclusão em massa)
-  const palavrasChaveWalter = [
-    'banco de dados', 'database', 'sql', 'exclusão em massa', 'excluir dados',
-    'migração de dados', 'backup', 'restore', 'postgresql', 'mysql', 'mongodb',
-    'firebase', 'firestore', 'dados', 'relatório', 'consulta', 'query'
-  ];
-  
-  // Verificar se o conteúdo contém palavras-chave para Walter
-  for (const palavra of palavrasChaveWalter) {
-    if (conteudoLowerCase.includes(palavra)) {
-      return 'Walter';
-    }
-  }
-  
-  // Por padrão, atribuir ao Denilson (desenvolvimento)
-  return 'Denilson';
-}
-
-// Função para criar um stream de texto
-function createStream(text: string): ReadableStream<Uint8Array> {
-  const encoder = new TextEncoder();
-  
-  return new ReadableStream({
-    start(controller) {
-      controller.enqueue(encoder.encode(text));
-      controller.close();
-    },
-  });
-}
-
-// Função para esperar um tempo específico
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-// Função para tentar com modelo alternativo em caso de falha
-async function tryWithFallbackModel(prompt: string, systemPrompt: string, model: string) {
-  console.log(`[generate-ticket/stream] Tentando com modelo alternativo: ${model}`);
-  
-  try {
-    const fallbackStream = await openai.chat.completions.create({
-      model: model,
-      messages: [
-        {
-          role: "system",
-          content: systemPrompt
-        },
-        { role: "user", content: prompt }
-      ],
-      temperature: 0.3,
-      max_tokens: 800, // Limitado para respostas mais rápidas
-      stream: true,
-    });
-    
-    console.log(`[generate-ticket/stream] Modelo alternativo ${model} respondeu com sucesso`);
-    return fallbackStream;
-  } catch (error) {
-    console.error(`[generate-ticket/stream] Erro no modelo alternativo ${model}:`, error);
-    throw error;
-  }
-}
+// Função para criar um encoder uma vez
+const encoder = new TextEncoder();
 
 export async function POST(request: NextRequest) {
-  console.log("[generate-ticket/stream] Iniciando processamento da requisição");
-  
   // Headers para streaming
   const headers = {
-    'Content-Type': 'text/plain; charset=utf-8',
-    'Transfer-Encoding': 'chunked',
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
     'Connection': 'keep-alive',
-    'Cache-Control': 'no-cache, no-transform',
   };
-  
-  // Configurar timeout para a requisição
-  const timeoutMs = 40000; // 40 segundos (abaixo do limite de 60s do Vercel)
-  let timeoutId: NodeJS.Timeout | null = null;
-  
-  // Criar uma promise que será rejeitada após o timeout
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => {
-      console.log("[generate-ticket/stream] Timeout atingido após", timeoutMs, "ms");
-      reject(new Error("Timeout ao gerar ticket"));
-    }, timeoutMs);
-  });
 
   try {
     // Verificação da API Key
     if (!process.env.OPENAI_API_KEY) {
-      console.error("[generate-ticket/stream] API Key não configurada");
-      return new Response(
-        "Configuração do serviço de IA incompleta",
-        { status: 500, headers }
-      );
+      throw new Error("API Key da OpenAI não configurada");
     }
 
     // Validação do corpo da requisição
-    let requestBody;
-    try {
-      requestBody = await request.json();
-      console.log("[generate-ticket/stream] Corpo da requisição recebido");
-    } catch (error) {
-      console.error("[generate-ticket/stream] Erro ao parsear JSON da requisição:", error);
-      return new Response(
-        "Formato de requisição inválido - JSON mal formatado",
-        { status: 400, headers }
-      );
-    }
+    const requestBody = await request.json();
     
-    // Verificar se o corpo da requisição é um objeto
-    if (!requestBody || typeof requestBody !== 'object') {
-      console.error("[generate-ticket/stream] Corpo da requisição não é um objeto");
-      return new Response(
-        "Formato de requisição inválido - corpo deve ser um objeto JSON",
-        { status: 400, headers }
-      );
-    }
-    
-    // Extrair e validar os campos individualmente
     const { sindicato, solicitacaoOriginal } = requestBody;
     
-    if (!sindicato || typeof sindicato !== 'string' || sindicato.trim().length === 0) {
-      console.error("[generate-ticket/stream] Campo 'sindicato' inválido");
-      return new Response(
-        "Campo 'sindicato' é obrigatório e deve ser uma string não vazia",
-        { status: 400, headers }
-      );
+    if (!sindicato || !solicitacaoOriginal) {
+      throw new Error("Campos 'sindicato' e 'solicitacaoOriginal' são obrigatórios");
     }
+
+    // Construir o prompt
+    const systemPrompt = `Você é um especialista em análise e documentação técnica, com profundo conhecimento do sistema próprio do sindicato. Você aprende constantemente sobre o sistema através das interações e informações fornecidas ao assistente IA.
+
+INSTRUÇÕES IMPORTANTES:
+
+1. ESTRUTURA DO TÍTULO:
+- Use sempre o formato: [NOME DO SINDICATO] - [TÍTULO RESUMIDO DO PROJETO]
+- O título deve ser conciso e relacionado ao módulo/funcionalidade específica
+- Referencie módulos existentes quando aplicável
+
+2. DESCRIÇÃO DO PROJETO:
+- Contextualize a solicitação dentro do sistema existente
+- Referencie módulos e funcionalidades já implementadas
+- Indique claramente o impacto nas funcionalidades atuais
+- Mantenha foco na integração com o sistema atual
+
+3. TAREFAS:
+Considere que a equipe tem profundo conhecimento do sistema. Cada tarefa deve:
+- Ter título claro referenciando o módulo/funcionalidade
+- Fornecer descrição técnica que:
+  • Contextualize a mudança no sistema atual
+  • Referencie componentes e padrões existentes
+  • Indique apenas o que precisa ser modificado/adicionado
+  • Mencione integrações com módulos existentes
+  • Foque nas alterações específicas necessárias
+
+ATRIBUIÇÃO DE RESPONSÁVEIS:
+- Denilson (Desenvolvimento):
+  • Conhece toda a estrutura front-end
+  • Domina os padrões de componentes existentes
+  • Gerencia integrações e APIs do sistema
+  • Responsável por UI/UX e experiência do usuário
+
+- Walter (Banco de Dados):
+  • Especialista na estrutura do banco de dados
+  • Domina procedures e queries existentes
+  • Gerencia operações em massa e otimizações
+  • Responsável por integridade e performance dos dados
+
+4. EXEMPLO DE DESCRIÇÃO TÉCNICA BOA:
+"Realizar exclusão em massa dos boletos vencidos há mais de 5 anos na base de dados. Utilizar a procedure existente 'sp_LimparBoletos' ajustando o parâmetro @AnosAntigos para 5. Executar primeiro no ambiente de homologação seguindo o protocolo padrão de limpeza. Após validação, agendar a execução em produção para horário de menor movimento. Seguir processo de backup incremental antes da operação."
+
+5. EXEMPLO DE DESCRIÇÃO TÉCNICA RUIM:
+"Criar nova procedure para deletar boletos antigos do banco de dados. Será necessário criar queries para identificar boletos, fazer validações de datas e implementar lógica de exclusão em lotes."
+
+6. DIRETRIZES GERAIS:
+- Considere sempre o conhecimento existente da equipe
+- Referencie componentes e padrões já estabelecidos
+- Foque nas alterações específicas necessárias
+- Evite explicar o que a equipe já sabe
+- Mantenha contexto do sistema existente`;
     
-    if (!solicitacaoOriginal || typeof solicitacaoOriginal !== 'string' || solicitacaoOriginal.trim().length === 0) {
-      console.error("[generate-ticket/stream] Campo 'solicitacaoOriginal' inválido");
-      return new Response(
-        "Campo 'solicitacaoOriginal' é obrigatório e deve ser uma string não vazia",
-        { status: 400, headers }
-      );
-    }
+    const prompt = `Crie um ticket técnico detalhado para o sindicato ${sindicato} com a seguinte solicitação: ${solicitacaoOriginal}.
 
-    console.log(`[generate-ticket/stream] Gerando ticket para sindicato: ${sindicato}`);
+O ticket deve seguir EXATAMENTE esta estrutura:
 
-    // Verificar cache para solicitações similares
-    const cachedTicket = findSimilarTicket(sindicato, solicitacaoOriginal);
-    if (cachedTicket) {
-      console.log("[generate-ticket/stream] Usando ticket em cache");
-      // Limpar o timeout já que não precisamos mais dele
-      if (timeoutId) clearTimeout(timeoutId);
-      
-      // Simular um pequeno atraso para dar feedback visual ao usuário
-      await sleep(500);
-      return new Response(createStream(cachedTicket), { headers });
-    }
+# ${sindicato} - [TÍTULO RESUMIDO DO PROJETO]
 
-    // Determinar o responsável principal com base no conteúdo da solicitação
-    const responsavelPrincipal = determinarResponsavel(solicitacaoOriginal);
-    console.log(`[generate-ticket/stream] Responsável determinado: ${responsavelPrincipal}`);
+## Descrição do Projeto
+[Descreva o objetivo contextualizando no sistema atual, indicando módulos afetados e impacto nas funcionalidades existentes]
 
-    // Construção do prompt simplificado para melhor desempenho
-    const prompt = `Crie um ticket detalhado para o sindicato ${sindicato} com a seguinte solicitação: ${solicitacaoOriginal}.
+## Tarefas Identificadas
 
-O ticket deve seguir este formato:
+### Tarefa 1: ${sindicato} - [TÍTULO ESPECÍFICO DO MÓDULO/FUNCIONALIDADE]
+**Descrição Técnica:**
+[Forneça descrição técnica focada nas alterações necessárias, referenciando componentes existentes e padrões do sistema. Seja específico sobre o que precisa ser modificado/adicionado, assumindo o conhecimento da equipe sobre o sistema.]
 
-## ${sindicato} - [TÍTULO DO PROJETO]
+**Responsável:** [Denilson/Walter baseado na especialidade]
 
-### Descrição de Projeto:
-[Descrição detalhada]
+[Repita a estrutura acima para cada tarefa adicional necessária]
 
-### Duração Total Estimada: [Período estimado]
+## Observações Técnicas
+• [Observações relevantes sobre impacto no sistema atual]
+• [Cuidados específicos com integrações existentes]
+• [Requisitos de compatibilidade com módulos atuais]`;
 
-### FASE 1 – [Nome da Fase]
-
-#### [TÍTULO DA TAREFA]
-• Descrição detalhada da tarefa: [Descrição]
-• Passos específicos de implementação: [Passos]
-• Critérios de aceitação: [Critérios]
-
-### FASE 2 – [Nome da Fase]
-
-#### [TÍTULO DA TAREFA]
-• Descrição detalhada da tarefa: [Descrição]
-• Passos específicos de implementação: [Passos]
-• Critérios de aceitação: [Critérios]
-
-### Responsáveis:
-- Responsável Principal: ${responsavelPrincipal}
-- Desenvolvimento: Denilson
-- Banco de Dados: Walter
-
-### Prioridade: [Alta/Média/Baixa]
-[Justificativa]
-
-### Requisitos Técnicos:
-• [Lista de requisitos]
-
-### Observações Importantes:
-• [Observações]`;
-
-    const systemPrompt = `Você é um especialista em gerenciamento de projetos para sindicatos. Crie tickets detalhados e técnicos.`;
-
-    // Criar stream para a resposta da OpenAI
-    try {
-      console.log(`[generate-ticket/stream] Iniciando chamada à API OpenAI com modelo ${AVAILABLE_MODELS[0]}`);
-      
-      // Criar uma Promise para a chamada à OpenAI
-      const openaiPromise = openai.chat.completions.create({
-        model: AVAILABLE_MODELS[0],
+    // Criar um ReadableStream para enviar a resposta
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          const completion = await openai.chat.completions.create({
+            model: "gpt-3.5-turbo",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: prompt }
         ],
-        temperature: 0.4, // Temperatura mais baixa para respostas mais previsíveis e rápidas
-        max_tokens: 1000, // Limitado para respostas mais rápidas
-        stream: true, // Habilitar streaming
-      });
-      
-      // Usar Promise.race para implementar o timeout
-      const stream = await Promise.race([
-        openaiPromise,
-        timeoutPromise
-      ]).catch((error) => {
-        console.error("[generate-ticket/stream] Erro durante a geração:", error.message);
-        throw error; // Propagar o erro para ser tratado no catch
-      });
-      
-      // Limpar o timeout já que a requisição foi bem-sucedida
-      if (timeoutId) clearTimeout(timeoutId);
-      
-      console.log("[generate-ticket/stream] Resposta da API OpenAI recebida com sucesso");
+            temperature: 0.7,
+            max_tokens: 2000,
+            stream: true,
+          });
 
-      // Salvar no Firestore em background sem bloquear a resposta
-      if (adminDb) {
-        // Não aguardamos a conclusão para não atrasar a resposta
-        adminDb.collection("generated_tickets").add({
-          sindicato,
-          solicitacaoOriginal,
-          responsavelPrincipal,
-          timestamp: new Date().toISOString(),
-          streaming: true
-        }).catch((error: unknown) => {
-          console.error("[generate-ticket/stream] Erro ao salvar no Firestore:", error);
-        });
-      }
-
-      // Capturar o conteúdo completo para armazenar no cache
-      let fullContent = '';
-      const originalStream = stream.toReadableStream();
-      
-      // Criar um TransformStream para capturar o conteúdo enquanto é enviado
-      const transformStream = new TransformStream({
-        transform(chunk, controller) {
-          try {
-            // Decodificar o chunk e adicionar ao conteúdo completo
-            const decoder = new TextDecoder();
-            const text = decoder.decode(chunk);
-            fullContent += text;
-            
-            // Passar o chunk adiante
-            controller.enqueue(chunk);
+          for await (const chunk of completion) {
+            const content = chunk.choices[0]?.delta?.content || '';
+            if (content) {
+              controller.enqueue(encoder.encode(content));
+            }
+          }
+          
+          controller.close();
           } catch (error) {
-            console.error("[generate-ticket/stream] Erro ao processar chunk:", error);
+          console.error("Erro durante a geração:", error);
             controller.error(error);
           }
         },
-        flush(controller) {
-          // Quando o stream terminar, armazenar no cache
-          if (fullContent.length > 0) {
-            // Armazenar em background para não bloquear a resposta
-            setTimeout(() => {
-              try {
-                cacheTicket(sindicato, solicitacaoOriginal, fullContent);
-                console.log("[generate-ticket/stream] Ticket armazenado no cache");
-              } catch (error) {
-                console.error("[generate-ticket/stream] Erro ao armazenar no cache:", error);
-              }
-            }, 0);
+      cancel() {
+        // Cleanup se necessário
+      }
+    });
+
+    return new Response(stream, {
+      headers: {
+        ...headers,
+        'X-Content-Type-Options': 'nosniff'
+      }
+    });
+
+  } catch (error) {
+    console.error("Erro na geração do ticket:", error);
+
+    // Se for um erro da OpenAI
+    if (error instanceof OpenAI.APIError) {
+      return new Response(
+        JSON.stringify({
+          error: `Erro na API da OpenAI: ${error.message}`,
+          code: error.code,
+          status: error.status
+        }),
+        { 
+          status: error.status || 500,
+          headers: {
+            'Content-Type': 'application/json'
           }
         }
-      });
-      
-      // Conectar os streams
-      const readableStream = originalStream.pipeThrough(transformStream);
-      
-      // Retornar o stream transformado
-      return new Response(readableStream, { headers });
-    } catch (error: unknown) {
-      console.error("[generate-ticket/stream] Erro na API OpenAI:", error);
-      
-      // Limpar o timeout se ainda estiver ativo
-      if (timeoutId) clearTimeout(timeoutId);
-      
-      // Tentar com modelo alternativo em caso de falha
-      try {
-        // Tentar com o segundo modelo disponível
-        const fallbackStream = await tryWithFallbackModel(prompt, systemPrompt, AVAILABLE_MODELS[1]);
-        return new Response(fallbackStream.toReadableStream(), { headers });
-      } catch (fallbackError) {
-        console.error("[generate-ticket/stream] Erro no primeiro fallback:", fallbackError);
-        
-        // Tentar com o terceiro modelo se disponível
-        try {
-          if (AVAILABLE_MODELS.length > 2) {
-            const secondFallbackStream = await tryWithFallbackModel(prompt, systemPrompt, AVAILABLE_MODELS[2]);
-            return new Response(secondFallbackStream.toReadableStream(), { headers });
-          }
-          throw new Error("Sem mais modelos disponíveis");
-        } catch (secondFallbackError) {
-          console.error("[generate-ticket/stream] Todos os fallbacks falharam:", secondFallbackError);
-          
-          // Se falhar novamente, retornar uma mensagem de erro clara
-          return new Response(
-            "Não foi possível gerar o ticket no momento. Por favor, tente novamente mais tarde.",
-            { status: 500, headers }
-          );
+      );
+    }
+
+    // Para outros tipos de erro
+    return new Response(
+      JSON.stringify({
+        error: error instanceof Error ? error.message : "Erro interno ao gerar ticket",
+      }),
+      { 
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json'
         }
       }
-    }
-  } catch (error) {
-    // Limpar o timeout se ainda estiver ativo
-    if (timeoutId) clearTimeout(timeoutId);
-    
-    console.error("[generate-ticket/stream] Erro geral:", error);
-    return new Response(
-      "Ocorreu um erro ao processar sua solicitação. Por favor, tente novamente.",
-      { status: 500, headers }
     );
   }
 }

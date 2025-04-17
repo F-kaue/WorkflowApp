@@ -9,20 +9,24 @@ import { ChevronDown, ChevronUp, Loader2, Plus, Trash2 } from "lucide-react"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { cn } from "@/lib/utils"
+import { useToast } from "@/components/ui/use-toast"
 
 type Treinamento = {
   id: string
   titulo: string
   descricao: string
   sindicato: string
-  dataInicio: any
-  dataFim: any
+  tipo?: string
+  dataInicio: number | null
+  dataFim: number | null
   status: string
-  dataCriacao: any
+  dataCriacao: number | null
+  participantes?: string[]
 }
 
 export default function TreinamentosPage() {
   const router = useRouter()
+  const { toast } = useToast()
   const [treinamentos, setTreinamentos] = useState<Treinamento[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedTickets, setExpandedTickets] = useState<Record<string, boolean>>({})
@@ -33,14 +37,55 @@ export default function TreinamentosPage() {
 
   const fetchTreinamentos = async () => {
     try {
+      console.log("Iniciando busca de treinamentos...")
       const response = await fetch("/api/treinamentos")
+      
       if (!response.ok) {
-        throw new Error("Erro ao carregar treinamentos")
+        const errorData = await response.json()
+        console.error("Resposta não ok:", {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData
+        })
+        throw new Error(errorData.error || "Erro ao carregar treinamentos")
       }
+      
       const data = await response.json()
-      setTreinamentos(data)
+      console.log("Dados brutos recebidos:", data)
+      
+      if (!Array.isArray(data)) {
+        console.error("Dados recebidos não são um array:", data)
+        throw new Error("Formato de dados inválido")
+      }
+
+      // Validar e processar cada treinamento
+      const treinamentosProcessados = data.map(item => {
+        console.log("Processando item:", item)
+        const processado = {
+          id: item.id || "",
+          titulo: item.titulo || "",
+          descricao: item.descricao || "",
+          sindicato: item.sindicato || "",
+          tipo: item.tipo || "",
+          status: item.status || "Agendado",
+          dataInicio: typeof item.dataInicio === 'number' ? item.dataInicio : null,
+          dataFim: typeof item.dataFim === 'number' ? item.dataFim : null,
+          dataCriacao: typeof item.dataCriacao === 'number' ? item.dataCriacao : null,
+          participantes: Array.isArray(item.participantes) ? item.participantes : []
+        }
+        console.log("Item processado:", processado)
+        return processado
+      })
+      
+      console.log("Treinamentos processados:", treinamentosProcessados)
+      setTreinamentos(treinamentosProcessados)
     } catch (error) {
-      console.error("Erro ao carregar treinamentos:", error)
+      console.error("Erro detalhado ao carregar treinamentos:", error)
+      toast({
+        title: "Erro",
+        description: error instanceof Error ? error.message : "Erro ao carregar treinamentos",
+        variant: "destructive",
+      })
     } finally {
       setLoading(false)
     }
@@ -62,23 +107,20 @@ export default function TreinamentosPage() {
     }
   }
 
-  const formatDateTime = (date: any) => {
-    if (!date) return ""
+  const formatDateTime = (timestamp: number | null) => {
+    if (!timestamp) return ""
     try {
-      let timestamp;
-      if (date.seconds) {
-        // Formato do Firestore Timestamp
-        timestamp = new Date(date.seconds * 1000)
-      } else if (date instanceof Date) {
-        // Já é um objeto Date
-        timestamp = date
-      } else if (typeof date === 'string') {
-        // String de data
-        timestamp = new Date(date)
-      } else {
+      console.log("Formatando timestamp:", timestamp)
+      const date = new Date(timestamp)
+      
+      if (isNaN(date.getTime())) {
+        console.error("Data inválida:", timestamp)
         return ""
       }
-      return format(timestamp, "dd/MM/yyyy - HH:mm", { locale: ptBR })
+      
+      const formattedDate = format(date, "dd/MM/yyyy - HH:mm", { locale: ptBR })
+      console.log("Data formatada:", formattedDate)
+      return formattedDate
     } catch (error) {
       console.error("Erro ao formatar data e hora:", error)
       return ""
@@ -123,9 +165,16 @@ export default function TreinamentosPage() {
                   <h3 className="font-medium text-sm">{treinamento.titulo}</h3>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <span className="text-xs text-muted-foreground">
-                    {formatDateTime(treinamento.dataInicio)}
-                  </span>
+                  <div className="flex flex-col items-end mr-2">
+                    <span className="text-xs text-muted-foreground">
+                      Agendado para: {formatDateTime(treinamento.dataInicio)}
+                    </span>
+                    {treinamento.dataFim && (
+                      <span className="text-xs text-muted-foreground">
+                        Término: {formatDateTime(treinamento.dataFim)}
+                      </span>
+                    )}
+                  </div>
                   <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => {
                     e.stopPropagation()
                     toggleExpand(treinamento.id)

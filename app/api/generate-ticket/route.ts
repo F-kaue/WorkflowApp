@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { adminDb } from "@/lib/firebase-admin-server";
+import { determinarResponsavel } from "@/lib/utils";
 
 // Configurações importantes para o Vercel
 export const maxDuration = 60; // Limitado a 60 segundos (1 minuto) para compatibilidade com o plano hobby do Vercel
@@ -9,7 +10,8 @@ export const dynamic = 'force-dynamic'; // Garante que a rota seja tratada como 
 // Configuração do cliente OpenAI com retentativas otimizados para o plano hobby do Vercel
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-  maxRetries: 2,  // Reduzido para 2 tentativas para evitar exceder o limite do Vercel
+  timeout: 30000, // 30 segundos de timeout
+  maxRetries: 2,
   defaultHeaders: {
     "OpenAI-Beta": "assistants=v1",
     "User-Agent": "SindSystem-WorkflowApp/1.0"
@@ -20,6 +22,7 @@ const openai = new OpenAI({
 const AVAILABLE_MODELS = [
   "gpt-4-turbo-preview",
   "gpt-4",
+  "gpt-3.5-turbo-16k",
   "gpt-3.5-turbo"
 ];
 
@@ -113,28 +116,6 @@ async function tryWithDifferentModels(messages: Array<{ role: "system" | "user" 
   throw lastError;
 }
 
-// Função para determinar o responsável com base no conteúdo da solicitação
-function determinarResponsavel(conteudo: string): string {
-  const conteudoLowerCase = conteudo.toLowerCase();
-  
-  // Palavras-chave para atribuição ao Walter (banco de dados, exclusão em massa)
-  const palavrasChaveWalter = [
-    'banco de dados', 'database', 'sql', 'exclusão em massa', 'excluir dados',
-    'migração de dados', 'backup', 'restore', 'postgresql', 'mysql', 'mongodb',
-    'firebase', 'firestore', 'dados', 'relatório', 'consulta', 'query'
-  ];
-  
-  // Verificar se o conteúdo contém palavras-chave para Walter
-  for (const palavra of palavrasChaveWalter) {
-    if (conteudoLowerCase.includes(palavra)) {
-      return 'Walter';
-    }
-  }
-  
-  // Por padrão, atribuir ao Denilson (desenvolvimento)
-  return 'Denilson';
-}
-
 export async function POST(request: Request) {
   // Headers padrão para todas as respostas
   const headers = {
@@ -198,12 +179,12 @@ export async function POST(request: Request) {
       });
 
       // Validar tipo e presença dos campos obrigatórios
-      if (!sindicato || typeof sindicato !== 'string') {
+      if (!sindicato || typeof sindicato !== 'string' || sindicato.trim().length === 0) {
         console.error("[generate-ticket] Campo 'sindicato' inválido ou ausente");
         return NextResponse.json(
           { 
             success: false,
-            error: "Campo 'sindicato' é obrigatório e deve ser uma string",
+            error: "Campo 'sindicato' é obrigatório e deve ser uma string não vazia",
             details: {
               received: sindicato ? typeof sindicato : 'undefined',
               timestamp: new Date().toISOString()
@@ -213,41 +194,16 @@ export async function POST(request: Request) {
         );
       }
       
-      if (!solicitacaoOriginal || typeof solicitacaoOriginal !== 'string') {
+      if (!solicitacaoOriginal || typeof solicitacaoOriginal !== 'string' || solicitacaoOriginal.trim().length === 0) {
         console.error("[generate-ticket] Campo 'solicitacaoOriginal' inválido ou ausente");
         return NextResponse.json(
           { 
             success: false,
-            error: "Campo 'solicitacaoOriginal' é obrigatório e deve ser uma string",
+            error: "Campo 'solicitacaoOriginal' é obrigatório e deve ser uma string não vazia",
             details: {
               received: solicitacaoOriginal ? typeof solicitacaoOriginal : 'undefined',
               timestamp: new Date().toISOString()
             }
-          },
-          { status: 400, headers }
-        );
-      }
-      
-      // Validar conteúdo mínimo
-      if (sindicato.trim().length === 0) {
-        console.error("[generate-ticket] Campo 'sindicato' está vazio");
-        return NextResponse.json(
-          { 
-            success: false,
-            error: "Campo 'sindicato' não pode estar vazio",
-            timestamp: new Date().toISOString()
-          },
-          { status: 400, headers }
-        );
-      }
-      
-      if (solicitacaoOriginal.trim().length === 0) {
-        console.error("[generate-ticket] Campo 'solicitacaoOriginal' está vazio");
-        return NextResponse.json(
-          { 
-            success: false,
-            error: "Campo 'solicitacaoOriginal' não pode estar vazio",
-            timestamp: new Date().toISOString()
           },
           { status: 400, headers }
         );
@@ -480,8 +436,6 @@ Lembre-se: A clara distinção entre PROJETO e TAREFAS é essencial, e as tarefa
           { status: 502, headers } // 502 Bad Gateway
         );
       }
-
-
 
       // Obter o ID do ticket salvo no Firestore (se disponível)
       let ticketId = null;
